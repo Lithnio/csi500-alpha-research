@@ -1,0 +1,43 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Local market data and experiment artifacts.  Keep these rules rooted so
+# source packages such as ``src/csi500_alpha/data`` remain version controlled.
+/data/
+/runs/
+/studies/
+/outputs/
+/reports/private/
+*.parquet
+*.feather
+*.arrow
+*.pkl
+*.pickle
+*.duckdb
+*.sqlite
+*.sqlite3
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.egg-info/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+/build/
+/dist/
+
+# Notebook and editor state
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

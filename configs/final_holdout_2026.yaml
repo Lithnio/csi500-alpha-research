@@ -1,0 +1,144 @@
+project:
+  data_root: data
+  run_root: runs
+  dataset: final_2026
+
+source:
+  token_env: TUSHARE_TOKEN
+  exchange: SSE
+  index_code: 000905.SH
+  max_attempts: 4
+  request_timeout_seconds: 30.0
+  backoff_base_seconds: 1.0
+  backoff_max_seconds: 30.0
+  min_request_interval_seconds: 0.35
+  calls_per_minute_limit: 200
+
+dates:
+  raw_start: "20160101"
+  backtest_start: "20170103"
+  end: "20260630"
+
+download:
+  include_daily_basic: true
+  include_suspensions: true
+  include_instrument_master: true
+  include_industry: true
+  industry_taxonomies: [SW2014, SW2021]
+  supplement_industry_by_instrument: true
+  reference_cache_tag: final-20260630
+  eligibility_refresh_start: "20260101"
+
+research:
+  factor_window: 5
+  rebalance_every: 5
+  top_n: 50
+  initial_cash: 1.0
+  linear_cost_bps: 5.0
+  stamp_duty_change_date: "20230828"
+  stamp_duty_before: 0.001
+  stamp_duty_after: 0.0005
+  price_limit_tolerance: 0.000001
+
+risk:
+  lookback: 252
+  min_history: 120
+  annualization: 252
+  missing_annual_volatility: 0.80
+  variance_floor: 0.00000001
+  return_clip: 0.20
+
+optimizer:
+  enabled: true
+  risk_aversion: 3.0
+  risk_horizon_days: 5
+  l2_penalty: 0.01
+  active_cap: 0.01
+  name_cap: 0.03
+  turnover_cap: 0.35
+  initial_turnover_cap: 1.0
+  exposure_cap: 0.02
+  solvers: [CLARABEL, OSQP]
+  feasibility_tolerance: 0.000001
+  liquidity_enabled: true
+  portfolio_aum_cny: 100000000
+  adv_lookback: 20
+  min_adv_observations: 10
+  max_adv_participation: 0.05
+  impact_bps_at_max_participation: 10.0
+
+features:
+  label_horizon: 5
+  min_factor_coverage: 0.80
+  mad_clip: 5.0
+  industry_coverage_threshold: 0.90
+  industry_transition_date: "20211213"
+
+workflow:
+  feature_start: "20170103"
+  portfolio_start: "20230103"
+  refit_every: 4
+  factors: []
+  feature_provider:
+    name: builtin_daily
+    params: {}
+  selector:
+    name: stability_cost
+    params:
+      min_coverage: 0.70
+      min_cross_section: 100
+      min_ic_dates: 52
+      min_mean_directed_ic: 0.0
+      min_direction_consistency: 0.50
+      segments: 4
+      min_segment_selection_frequency: 0.50
+      min_newey_west_t: 0.0
+      min_quintile_monotonicity: 0.0
+      max_score_churn: 0.35
+      max_abs_correlation: 0.85
+      min_factors: 5
+      max_factors: 10
+      max_per_family: 2
+      lookback_dates: 156
+      churn_penalty: 0.05
+  model:
+    name: ic_shrinkage
+    params:
+      min_cross_section: 100
+      min_ic_dates: 52
+      min_churn_dates: 24
+      lookback_dates: 156
+      hac_max_lags: 4
+      min_mean_directed_ic: 0.0
+      shrinkage_enabled: true
+      prior_variance_floor: 1.0e-8
+      correlation_penalty: 0.005
+      cost_penalty: 0.01
+      weight_turnover_penalty: 0.01
+      max_factor_weight: 0.35
+      min_active_factors: 3
+      min_factor_fraction: 0.50
+      solvers: [CLARABEL, OSQP]
+      feasibility_tolerance: 1.0e-7
+  calibrator:
+    name: rolling_ridge
+    params:
+      alpha: 10.0
+      min_training_rows: 1000
+      min_training_dates: 12
+      score_clip: 3.0
+      label_clip: 0.20
+      max_abs_slope: 0.05
+      max_abs_expected_return: 0.10
+
+experiment:
+  stage: validation
+  protocol_id: csi500-final-holdout-2026-v1
+  train_start: "20170103"
+  train_end: "20221230"
+  validation_start: "20230103"
+  validation_end: "20251231"
+  test_start: "20260105"
+  test_end: "20260630"
+  embargo_days: 5
+  allow_frozen_test: true

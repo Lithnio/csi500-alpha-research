@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install Python and locked dependencies
+        run: |
+          uv python install 3.12
+          uv sync --locked --extra dev --extra report
+
+      - name: Verify tracked source and package import
+        run: |
+          if git check-ignore -q src/csi500_alpha/data/client.py; then
+            echo "The Python data package is hidden by .gitignore"
+            exit 1
+          fi
+          uv run python -c "from csi500_alpha.data.client import TushareClient"
+
+      - name: Check public-repository boundaries
+        run: |
+          tracked_private="$(git ls-files -- '.env' ':(top)data/**' ':(top)runs/**' ':(top)studies/**' ':(glob)**/*.parquet' ':(glob)**/*.feather')"
+          if [ -n "$tracked_private" ]; then
+            echo "Private data or credentials are tracked:"
+            echo "$tracked_private"
+            exit 1
+          fi
+
+      - name: Validate study contract
+        run: |
+          uv run python -m csi500_alpha plan-study --study configs/studies/core_baselines.yaml
+          uv run python -m csi500_alpha plan-stress --stress configs/stress/core_cost_capacity.yaml
+
+      - name: Check lockfile
+        run: uv lock --check
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy src
+
+      - name: Test
+        run: uv run pytest --cov=csi500_alpha --cov-report=term-missing --cov-fail-under=80
+
+      - name: Build distribution
+        run: uv build

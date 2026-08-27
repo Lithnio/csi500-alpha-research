@@ -1,0 +1,286 @@
+study:
+  id: core-baselines-v3
+  base_config: ../full.yaml
+  max_trials: 12
+
+selection:
+  primary_tolerance: 0.10
+  gates:
+    - path: quality_passed
+      operator: "=="
+      value: true
+    - path: optimizer_solve_rate
+      operator: ">="
+      value: 0.95
+    - path: valid_expected_returns
+      operator: ">"
+      value: 0
+    - path: evaluation.calibration.realized_dates
+      operator: ">"
+      value: 0
+    - path: evaluation.execution.executed_orders
+      operator: ">"
+      value: 0
+  primary:
+    path: metrics.information_ratio
+    direction: maximize
+  tie_breakers:
+    - path: evaluation.yearly.minimum_information_ratio
+      direction: maximize
+    - path: metrics.max_drawdown
+      direction: maximize
+    - path: evaluation.execution.cost_bps_of_executed_notional
+      direction: minimize
+    - path: metrics.average_turnover
+      direction: minimize
+
+trials:
+  - id: b0_equal_all
+    purpose: Reference specification with all factors and fixed score scaling.
+    overrides:
+      workflow:
+        selector:
+          name: all
+          params: {}
+        model:
+          name: direction_equal_weight
+          params:
+            min_factor_fraction: 0.50
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0
+
+  - id: b1_stability_equal
+    purpose: Isolate training-only stability, redundancy and cost filtering.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params:
+            min_coverage: 0.70
+            min_cross_section: 100
+            min_ic_dates: 52
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_newey_west_t: 0.0
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.85
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            lookback_dates: 156
+            churn_penalty: 0.05
+        model:
+          name: direction_equal_weight
+          params:
+            min_factor_fraction: 0.50
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0
+
+  - id: b2_stability_ridge
+    purpose: Compare a regularized linear alpha model under the same selector.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params:
+            min_coverage: 0.70
+            min_cross_section: 100
+            min_ic_dates: 52
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_newey_west_t: 0.0
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.85
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            lookback_dates: 156
+            churn_penalty: 0.05
+        model:
+          name: ridge
+          params:
+            alpha: 10.0
+            min_training_rows: 1000
+            min_training_dates: 12
+            min_factor_fraction: 0.80
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0
+
+  - id: b3_stability_calibrated
+    purpose: Isolate learned return calibration with an interpretable alpha score.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params:
+            min_coverage: 0.70
+            min_cross_section: 100
+            min_ic_dates: 52
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_newey_west_t: 0.0
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.85
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            lookback_dates: 156
+            churn_penalty: 0.05
+        model:
+          name: direction_equal_weight
+          params:
+            min_factor_fraction: 0.50
+        calibrator:
+          name: rolling_ridge
+          params:
+            alpha: 10.0
+            min_training_rows: 1000
+            min_training_dates: 12
+            score_clip: 3.0
+            label_clip: 0.20
+            max_abs_slope: 0.05
+            max_abs_expected_return: 0.10
+
+  - id: c0_ic_raw
+    purpose: Establish the constrained IC-weighting baseline without shrinkage or penalties.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params: &p3_selector
+            min_coverage: 0.70
+            min_cross_section: 100
+            min_ic_dates: 52
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_newey_west_t: 0.0
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.85
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            lookback_dates: 156
+            churn_penalty: 0.05
+        model:
+          name: ic_shrinkage
+          params: &p3_model
+            min_cross_section: 100
+            min_ic_dates: 52
+            min_churn_dates: 24
+            lookback_dates: 156
+            hac_max_lags: 4
+            min_mean_directed_ic: 0.0
+            shrinkage_enabled: false
+            prior_variance_floor: 1.0e-8
+            correlation_penalty: 0.0
+            cost_penalty: 0.0
+            weight_turnover_penalty: 0.0
+            max_factor_weight: 0.35
+            min_active_factors: 3
+            min_factor_fraction: 0.50
+            solvers: [CLARABEL, OSQP]
+            feasibility_tolerance: 1.0e-7
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0
+
+  - id: c1_ic_uncertainty
+    purpose: Isolate empirical-Bayes uncertainty shrinkage of directed IC estimates.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params: *p3_selector
+        model:
+          name: ic_shrinkage
+          params:
+            <<: *p3_model
+            shrinkage_enabled: true
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0
+
+  - id: c2_ic_correlation
+    purpose: Add factor-correlation redundancy control to uncertainty shrinkage.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params: *p3_selector
+        model:
+          name: ic_shrinkage
+          params:
+            <<: *p3_model
+            shrinkage_enabled: true
+            correlation_penalty: 0.005
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0
+
+  - id: c3_ic_cost
+    purpose: Add signal-churn cost control to the uncertainty and correlation terms.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params: *p3_selector
+        model:
+          name: ic_shrinkage
+          params:
+            <<: *p3_model
+            shrinkage_enabled: true
+            correlation_penalty: 0.005
+            cost_penalty: 0.01
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0
+
+  - id: c4_ic_full
+    purpose: Add cross-refit factor-weight stability to the complete IC synthesis model.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params: *p3_selector
+        model:
+          name: ic_shrinkage
+          params:
+            <<: *p3_model
+            shrinkage_enabled: true
+            correlation_penalty: 0.005
+            cost_penalty: 0.01
+            weight_turnover_penalty: 0.01
+        calibrator:
+          name: robust_cross_section
+          params:
+            target_scale: 0.01
+            score_clip: 3.0

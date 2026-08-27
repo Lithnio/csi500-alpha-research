@@ -1,0 +1,121 @@
+{
+  "audit": {
+    "artifact_count": 18,
+    "artifact_hash_mismatches": 0,
+    "critical_data_quality_failures": 0,
+    "duplicate_key_rows": 0,
+    "gold_artifact_count": 5,
+    "gold_hash_mismatches": 0,
+    "identical_validation_and_frozen_gold_fingerprints": 0,
+    "maximum_metric_recalculation_difference": 0.0,
+    "maximum_optimizer_constraint_violation": 2.4425183979548404e-08,
+    "optimizer_attempts": 23,
+    "optimizer_solved": 23,
+    "point_in_time_violations": 0,
+    "range_mismatches": 0,
+    "silver_hash_mismatches": 0,
+    "silver_table_count": 13,
+    "stage_boundary_crossings": 0,
+    "validation_and_frozen_gold_paths_distinct": true,
+    "warning_count": 1
+  },
+  "calibration_bins": [
+    {
+      "bin": 1,
+      "dates": 22,
+      "mean_expected_return": -0.0014730426345055997,
+      "mean_realized_active_return": -0.0027425097962603096,
+      "observations": 2189
+    },
+    {
+      "bin": 2,
+      "dates": 22,
+      "mean_expected_return": -0.0004768756171330983,
+      "mean_realized_active_return": -0.0029173443634949903,
+      "observations": 2198
+    },
+    {
+      "bin": 3,
+      "dates": 22,
+      "mean_expected_return": -3.0814975985968563e-06,
+      "mean_realized_active_return": -0.0060137947790760175,
+      "observations": 2195
+    },
+    {
+      "bin": 4,
+      "dates": 22,
+      "mean_expected_return": 0.00040682104237645556,
+      "mean_realized_active_return": -0.004404821463155285,
+      "observations": 2198
+    },
+    {
+      "bin": 5,
+      "dates": 22,
+      "mean_expected_return": 0.001037290521139503,
+      "mean_realized_active_return": -0.008605674658465024,
+      "observations": 2200
+    }
+  ],
+  "data_source": "Tushare Pro",
+  "evaluation_role": "final_holdout",
+  "headline_metrics": {
+    "annualized_active_return": -0.16977840988806928,
+    "annualized_return": 0.10243947122821573,
+    "average_turnover": 0.019221661131609065,
+    "benchmark_total_return": 0.12097939825331161,
+    "calibration_slope": -1.8021230489371503,
+    "daily_rank_ic": 0.02462310649868488,
+    "execution_cost_bps": 7.775333498259089,
+    "information_ratio": -2.2864564189553938,
+    "max_drawdown": -0.12274101846965613,
+    "notional_fill_ratio": 0.9992210770218952,
+    "optimizer_solve_rate": 1.0,
+    "quintile_monotonicity": -0.8999999999999998,
+    "relative_wealth_gap": -0.0687664166265124,
+    "return_gap_percentage_points": -7.708573633002436,
+    "top_minus_bottom_realized_return": -0.0058631648622047144,
+    "total_return": 0.04389366192328725,
+    "tracking_error": 0.07425394531054977
+  },
+  "interpretation": {
+    "active_performance_supported": false,
+    "diagnostic": "Average daily rank IC remained positive, but the highest expected-return bin realized a lower active return than the lowest bin. The concentrated low-risk/liquidity factor mix is a plausible sensitivity, not a proven cause.",
+    "finding": "The frozen method made money in absolute terms but did not deliver positive active performance against the CSI 500 in the final holdout.",
+    "status": "negative_active_holdout"
+  },
+  "limitations": [
+    "The final holdout covers only the first half of 2026.",
+    "Historical industry coverage has one non-blocking warning; missing industries use an explicit unknown group.",
+    "Transaction costs and capacity are modeled rather than live fills."
+  ],
+  "method": {
+    "calibrator": "rolling_ridge",
+    "candidate_factor_count": 25,
+    "final_effective_factor_count": 2.9850757499501572,
+    "final_material_factor_weights": [
+      {
+        "factor": "low_idio_vol_60",
+        "weight": 0.34999992434169364
+      },
+      {
+        "factor": "low_range_vol_20",
+        "weight": 0.34999924315950354
+      },
+      {
+        "factor": "free_turnover_20",
+        "weight": 0.3000007611831585
+      }
+    ],
+    "model": "ic_shrinkage",
+    "selector": "stability_cost"
+  },
+  "schema_version": 1,
+  "scope": {
+    "evaluation_end": "20260630",
+    "evaluation_start": "20260109",
+    "final_holdout": true,
+    "observations": 112,
+    "test_end": "20260630",
+    "test_start": "20260105"
+  }
+}

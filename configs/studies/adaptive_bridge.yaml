@@ -1,0 +1,108 @@
+study:
+  id: adaptive-bridge-v1
+  base_config: ../extended_validation_2023_2025.yaml
+  max_trials: 2
+
+selection:
+  primary_tolerance: 0.10
+  gates:
+    - path: quality_passed
+      operator: "=="
+      value: true
+    - path: optimizer_solve_rate
+      operator: ">="
+      value: 0.95
+    - path: valid_expected_returns
+      operator: ">"
+      value: 0
+    - path: evaluation.calibration.realized_dates
+      operator: ">"
+      value: 0
+    - path: evaluation.execution.executed_orders
+      operator: ">"
+      value: 0
+  primary:
+    path: metrics.information_ratio
+    direction: maximize
+  tie_breakers:
+    - path: evaluation.yearly.minimum_information_ratio
+      direction: maximize
+    - path: metrics.max_drawdown
+      direction: maximize
+    - path: evaluation.execution.cost_bps_of_executed_notional
+      direction: minimize
+    - path: metrics.average_turnover
+      direction: minimize
+
+trials:
+  - id: d0_selected_baseline
+    purpose: >-
+      Control specification: direction-equal-weight alpha with the selected filter
+      and rolling Ridge calibration on the 2023-2025 extended-validation window.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params: &bridge_selector
+            min_coverage: 0.70
+            min_cross_section: 100
+            min_ic_dates: 52
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_newey_west_t: 0.0
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.85
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            lookback_dates: 156
+            churn_penalty: 0.05
+        model:
+          name: direction_equal_weight
+          params:
+            min_factor_fraction: 0.50
+        calibrator:
+          name: rolling_ridge
+          params: &bridge_calibrator
+            alpha: 10.0
+            min_training_rows: 1000
+            min_training_dates: 12
+            score_clip: 3.0
+            label_clip: 0.20
+            max_abs_slope: 0.05
+            max_abs_expected_return: 0.10
+
+  - id: d1_ic_full_calibrated
+    purpose: >-
+      Candidate specification: replace direction-equal weighting with the complete
+      IC synthesis under otherwise identical settings.
+    overrides:
+      workflow:
+        selector:
+          name: stability_cost
+          params: *bridge_selector
+        model:
+          name: ic_shrinkage
+          params:
+            min_cross_section: 100
+            min_ic_dates: 52
+            min_churn_dates: 24
+            lookback_dates: 156
+            hac_max_lags: 4
+            min_mean_directed_ic: 0.0
+            shrinkage_enabled: true
+            prior_variance_floor: 1.0e-8
+            correlation_penalty: 0.005
+            cost_penalty: 0.01
+            weight_turnover_penalty: 0.01
+            max_factor_weight: 0.35
+            min_active_factors: 3
+            min_factor_fraction: 0.50
+            solvers: [CLARABEL, OSQP]
+            feasibility_tolerance: 1.0e-7
+        calibrator:
+          name: rolling_ridge
+          params: *bridge_calibrator

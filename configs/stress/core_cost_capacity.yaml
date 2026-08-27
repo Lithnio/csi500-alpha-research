@@ -1,0 +1,33 @@
+stress:
+  id: core-cost-capacity-v1
+  source_study: ../studies/core_baselines.yaml
+  max_scenarios: 10
+  baseline_parity_tolerance: 1.0e-8
+
+scenarios:
+  - id: baseline
+    purpose: Reproduce the selected trial portfolio exactly before applying stress.
+
+  - id: cost_0_5x
+    purpose: Halve linear, stamp-duty and impact cost assumptions.
+    cost_multiplier: 0.5
+
+  - id: cost_2_0x
+    purpose: Double linear, stamp-duty and impact cost assumptions.
+    cost_multiplier: 2.0
+
+  - id: aum_50m
+    purpose: Test liquidity and impact at CNY 50 million portfolio AUM.
+    portfolio_aum_cny: 50000000
+
+  - id: aum_300m
+    purpose: Test liquidity and impact at CNY 300 million portfolio AUM.
+    portfolio_aum_cny: 300000000
+
+  - id: participation_10pct
+    purpose: Allow trading up to 10 percent of observed daily amount.
+    max_adv_participation: 0.10
+
+  - id: participation_20pct
+    purpose: Allow trading up to 20 percent of observed daily amount.
+    max_adv_participation: 0.20

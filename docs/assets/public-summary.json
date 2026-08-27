@@ -1,0 +1,162 @@
+{
+  "data_source": "Tushare Pro",
+  "headline_metrics": {
+    "annualized_active_return": 0.0519869558599063,
+    "annualized_return": 0.14192694275078943,
+    "average_turnover": 0.012425482929201046,
+    "benchmark_total_return": 0.2542011161850597,
+    "calibration_slope": 0.7748831389506607,
+    "daily_rank_ic": 0.05463558162413239,
+    "execution_cost_bps": 9.886322668143203,
+    "information_ratio": 1.2707749418476353,
+    "max_drawdown": -0.277927469203354,
+    "notional_fill_ratio": 0.9963081536198899,
+    "optimizer_solve_rate": 1.0,
+    "total_return": 0.4649558331300412
+  },
+  "innovation_ablation": {
+    "evaluation_end": "20221230",
+    "evaluation_start": "20210105",
+    "rows": [
+      {
+        "information_ratio": 0.7194801697642064,
+        "mean_effective_factor_count": 2.9850762994363893,
+        "mean_factor_weight_l1_change": 0.19729999994663697,
+        "trial_id": "c0_ic_raw"
+      },
+      {
+        "information_ratio": 0.7194803550623603,
+        "mean_effective_factor_count": 2.98507655251273,
+        "mean_factor_weight_l1_change": 0.2026964261793765,
+        "trial_id": "c1_ic_uncertainty"
+      },
+      {
+        "information_ratio": 0.7194797067136268,
+        "mean_effective_factor_count": 3.075131767791062,
+        "mean_factor_weight_l1_change": 0.21943644714761287,
+        "trial_id": "c2_ic_correlation"
+      },
+      {
+        "information_ratio": 0.7194801809776078,
+        "mean_effective_factor_count": 3.0783299757842584,
+        "mean_factor_weight_l1_change": 0.21469162742551112,
+        "trial_id": "c3_ic_cost"
+      },
+      {
+        "information_ratio": 0.6748541691471978,
+        "mean_effective_factor_count": 3.1722316393774,
+        "mean_factor_weight_l1_change": 0.15638902618731415,
+        "trial_id": "c4_ic_full"
+      }
+    ]
+  },
+  "limitations": [
+    "The current public backtest is not the final holdout.",
+    "C0-C4 is an ablation result, not evidence that the innovation dominates baselines.",
+    "Costs and capacity are modeled; this is not live trading evidence."
+  ],
+  "schema_version": 1,
+  "scope": {
+    "evaluation_end": "20251231",
+    "evaluation_role": "extended_validation",
+    "evaluation_start": "20230103",
+    "final_holdout": false,
+    "training_end": "20221230",
+    "training_start": "20170103"
+  },
+  "selected_method": {
+    "calibrator": "rolling_ridge",
+    "mean_effective_factor_count": 3.2039761121573846,
+    "model": "ic_shrinkage",
+    "selector": "stability_cost"
+  },
+  "stress": {
+    "baseline_parity_passed": true,
+    "rows": [
+      {
+        "annualized_active_return": 0.037733383379480616,
+        "average_turnover": 0.030808650074434934,
+        "cost_bps_of_executed_notional": 5.145267709120824,
+        "information_ratio": 0.8481199842470699,
+        "max_drawdown": -0.2824829029827718,
+        "minimum_year_information_ratio": 0.0019776886120033478,
+        "notional_fill_ratio": 0.9985974506734221,
+        "optimizer_solve_rate": 1.0,
+        "scenario_id": "cost_0_5x"
+      },
+      {
+        "annualized_active_return": 0.0519869558599063,
+        "average_turnover": 0.012425482929201046,
+        "cost_bps_of_executed_notional": 9.886322668143203,
+        "information_ratio": 1.2707749418476353,
+        "max_drawdown": -0.277927469203354,
+        "minimum_year_information_ratio": 0.016172064596218807,
+        "notional_fill_ratio": 0.9963081536198899,
+        "optimizer_solve_rate": 1.0,
+        "scenario_id": "baseline"
+      },
+      {
+        "annualized_active_return": 0.049522756440324785,
+        "average_turnover": 0.00415379542882006,
+        "cost_bps_of_executed_notional": 18.720628318614978,
+        "information_ratio": 1.3119130573445736,
+        "max_drawdown": -0.2699256384302964,
+        "minimum_year_information_ratio": 0.3715078133698129,
+        "notional_fill_ratio": 0.9979820258316195,
+        "optimizer_solve_rate": 1.0,
+        "scenario_id": "cost_2_0x"
+      },
+      {
+        "annualized_active_return": 0.05221539396608504,
+        "average_turnover": 0.012426591169770374,
+        "cost_bps_of_executed_notional": 9.204175484086361,
+        "information_ratio": 1.2765402094921636,
+        "max_drawdown": -0.27785013844416806,
+        "minimum_year_information_ratio": 0.02026905411710001,
+        "notional_fill_ratio": 0.9963736423158779,
+        "optimizer_solve_rate": 1.0,
+        "scenario_id": "aum_50m"
+      },
+      {
+        "annualized_active_return": 0.05151022372593967,
+        "average_turnover": 0.01232959283786802,
+        "cost_bps_of_executed_notional": 11.378692985996778,
+        "information_ratio": 1.2600076916367962,
+        "max_drawdown": -0.27948770518230115,
+        "minimum_year_information_ratio": 0.0137953836469122,
+        "notional_fill_ratio": 0.9809393748835059,
+        "optimizer_solve_rate": 1.0,
+        "scenario_id": "aum_300m"
+      },
+      {
+        "annualized_active_return": 0.05221539396608504,
+        "average_turnover": 0.012426591169770374,
+        "cost_bps_of_executed_notional": 9.204175484086361,
+        "information_ratio": 1.2765402094921636,
+        "max_drawdown": -0.27785013844416806,
+        "minimum_year_information_ratio": 0.02026905411710001,
+        "notional_fill_ratio": 0.9963736423158779,
+        "optimizer_solve_rate": 1.0,
+        "scenario_id": "participation_10pct"
+      },
+      {
+        "annualized_active_return": 0.05236892062661126,
+        "average_turnover": 0.012426929668090074,
+        "cost_bps_of_executed_notional": 8.72185754265504,
+        "information_ratio": 1.2804278181492934,
+        "max_drawdown": -0.2777910013012731,
+        "minimum_year_information_ratio": 0.0220737582744162,
+        "notional_fill_ratio": 0.9964258102895484,
+        "optimizer_solve_rate": 1.0,
+        "scenario_id": "participation_20pct"
+      }
+    ]
+  },
+  "study": {
+    "completed_trials": 2,
+    "declared_trials": 2,
+    "id": "adaptive-bridge-v1",
+    "selected_trial_id": "d1_ic_full_calibrated",
+    "source_commit": "140b47158a7405b754d4b5b5b8a873c6ad196d08"
+  }
+}

@@ -1,0 +1,92 @@
+project:
+  data_root: data
+  run_root: runs
+  dataset: framework_ridge_smoke
+
+source:
+  token_env: TUSHARE_TOKEN
+  exchange: SSE
+  index_code: 000905.SH
+  max_attempts: 4
+  request_timeout_seconds: 30.0
+  backoff_base_seconds: 0.75
+  backoff_max_seconds: 12.0
+  min_request_interval_seconds: 0.35
+  calls_per_minute_limit: 200
+
+dates:
+  raw_start: "20250401"
+  backtest_start: "20251001"
+  end: "20251231"
+
+download:
+  include_daily_basic: true
+  include_suspensions: true
+  include_instrument_master: true
+  include_industry: true
+  industry_taxonomies: [SW2021]
+  supplement_industry_by_instrument: true
+
+research:
+  factor_window: 5
+  rebalance_every: 5
+  top_n: 50
+  initial_cash: 1.0
+  linear_cost_bps: 5.0
+  stamp_duty_change_date: "20230828"
+  stamp_duty_before: 0.001
+  stamp_duty_after: 0.0005
+  price_limit_tolerance: 0.000001
+
+risk:
+  lookback: 120
+  min_history: 60
+  annualization: 252
+  missing_annual_volatility: 0.80
+  variance_floor: 0.00000001
+  return_clip: 0.20
+
+optimizer:
+  enabled: true
+  risk_aversion: 3.0
+  risk_horizon_days: 5
+  l2_penalty: 0.01
+  active_cap: 0.01
+  name_cap: 0.03
+  turnover_cap: 0.35
+  initial_turnover_cap: 1.0
+  exposure_cap: 0.02
+  solvers: [CLARABEL, OSQP]
+
+features:
+  label_horizon: 5
+  min_factor_coverage: 0.80
+  mad_clip: 5.0
+  industry_coverage_threshold: 0.90
+  industry_transition_date: "20211213"
+
+workflow:
+  feature_start: "20250901"
+  portfolio_start: "20251001"
+  refit_every: 4
+  factors: []
+  feature_provider:
+    name: builtin_daily
+    params: {}
+  selector:
+    name: coverage_correlation
+    params:
+      min_coverage: 0.80
+      max_abs_correlation: 0.90
+  model:
+    name: ridge
+    params:
+      alpha: 10.0
+      min_training_rows: 1000
+      min_training_dates: 3
+      min_factor_fraction: 0.80
+  calibrator:
+    name: robust_cross_section
+    params:
+      target_scale: 0.01
+      score_clip: 3.0

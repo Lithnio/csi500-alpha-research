@@ -1,0 +1,38 @@
+{
+  "chart_map": {
+    "final-holdout.png": {
+      "fields": [
+        "trade_date",
+        "nav",
+        "benchmark_nav"
+      ],
+      "note": "The portfolio returned 4.39% versus the benchmark's 12.10%; the final holdout did not support positive active performance.",
+      "observations": 112,
+      "scope": "one-time 2026 final holdout; no post-holdout retuning",
+      "title": "Final holdout NAV, relative wealth gap and drawdown",
+      "type": "three-panel line and filled-area chart"
+    }
+  },
+  "evaluation_role": "final_holdout",
+  "outputs": {
+    "final-holdout-audit.json": "5bc7899b49460b731f780ac94cb00a3118d701fdc654677381c5dd4e208d9351",
+    "final-holdout-summary.json": "9445ac9bad1de3b29e15707302992996053edb9c0a7efa85adfcf0a6fd113c69",
+    "final-holdout.png": "b613334c57d5bc3857df045a6ce3bed097ad6754cf50a42aeaea9e2c15c0c15c"
+  },
+  "protocol_id": "csi500-final-holdout-2026-v1",
+  "public_boundary": "Aggregate statistics and one raster figure only. Signals, holdings, orders, trades, index weights, vendor rows and local paths are excluded.",
+  "run_id": "20260827T032516965067Z-e381bf56",
+  "schema_version": 2,
+  "source_artifacts": {
+    "final/daily.parquet": "79e928783175289d47f6eebf6260c24b0ab2a73b1e11aaf526c038324421cf14",
+    "final/metrics.json": "1b26dba6f813f578246d893f182848594b940a3cb06ed407e191cb13db7e2aaa",
+    "final/research-evaluation.json": "6d8dcc8951df522b692ad33519fe942b9340b21983960cbd007698a6a872421a",
+    "final/run-manifest.json": "2a1e7d6563498249f9479ab9e97270c11b4f72bcafb06b59c868b932e0b20e95",
+    "final/trades.parquet": "f1b2d50902c702a1444e2f717241d95576c186424f5faa4d2b59c9e6ee3f8171",
+    "generator/final_reporting.py": "dc0223ff1c89eac58763eebee7aec1d515595d010d516f2eed82ece3e490ab49",
+    "generator/reporting.py": "897e6af30a3fe202e35801997ae52fe8377af0722c8352af53a54795d0f377b4",
+    "generator/storage.py": "8092288bb1564a27599431e97f267861b3aa3fda3fd7df7656ad361278f010cf",
+    "protocol/frozen-test.json": "fb77f5bd3283a3fa50bf606fcc43a2912453979a1d6bfc83d6a5bc4d968248d2",
+    "protocol/validation-lock.json": "544da7e2e87cda04046973b6d9762bff60306a23293654dc4fb806638208389b"
+  }
+}

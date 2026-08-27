@@ -1,0 +1,60 @@
+{
+  "data_source": "Tushare Pro",
+  "evaluation_role": "final_holdout",
+  "identity": {
+    "data_snapshot_hash": "95a5e5185a34b069e443a2d248e3e393be2029e22bd4a33612e49355b4d840c3",
+    "lock_matches_run": true,
+    "research_source_hash": "48494145f7530ad3ac5bf75e2d016dca1d4ef662d5b3b996b56bbfc1060a2008",
+    "research_spec_hash": "e381bf567e458c7350fe48eb3d2d9e35e01401b7d568abf51baf21bd9fc05b22",
+    "validation_lineage_matches": true,
+    "validation_run_id": "20260827T022651643001Z-e381bf56"
+  },
+  "limitations": [
+    "The final holdout covers only the first half of 2026.",
+    "Historical industry coverage has one non-blocking warning; missing industries use an explicit unknown group.",
+    "Transaction costs and capacity are modeled rather than live fills."
+  ],
+  "protocol_id": "csi500-final-holdout-2026-v1",
+  "quality_audit": {
+    "artifact_count": 18,
+    "artifact_hash_mismatches": 0,
+    "critical_data_quality_failures": 0,
+    "duplicate_key_rows": 0,
+    "gold_artifact_count": 5,
+    "gold_hash_mismatches": 0,
+    "identical_validation_and_frozen_gold_fingerprints": 0,
+    "maximum_metric_recalculation_difference": 0.0,
+    "maximum_optimizer_constraint_violation": 2.4425183979548404e-08,
+    "optimizer_attempts": 23,
+    "optimizer_solved": 23,
+    "point_in_time_violations": 0,
+    "range_mismatches": 0,
+    "silver_hash_mismatches": 0,
+    "silver_table_count": 13,
+    "stage_boundary_crossings": 0,
+    "validation_and_frozen_gold_paths_distinct": true,
+    "warning_count": 1
+  },
+  "run": {
+    "completed_at": "2026-08-27T03:43:38+00:00",
+    "git_commit": "78472020a0327106fe06cc8c87c76e2e455292bc",
+    "git_dirty": false,
+    "run_id": "20260827T032516965067Z-e381bf56"
+  },
+  "schema_version": 1,
+  "scope": {
+    "evaluation_end": "20260630",
+    "evaluation_start": "20260109",
+    "final_holdout": true,
+    "observations": 112,
+    "test_end": "20260630",
+    "test_start": "20260105"
+  },
+  "warnings": [
+    {
+      "minimum_coverage": 0.832,
+      "minimum_date": "20210729",
+      "name": "industry_decision_date_coverage"
+    }
+  ]
+}

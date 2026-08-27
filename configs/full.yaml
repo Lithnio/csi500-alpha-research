@@ -1,0 +1,106 @@
+project:
+  data_root: data
+  run_root: runs
+  dataset: full
+
+source:
+  token_env: TUSHARE_TOKEN
+  exchange: SSE
+  index_code: 000905.SH
+  max_attempts: 4
+  request_timeout_seconds: 30.0
+  backoff_base_seconds: 1.0
+  backoff_max_seconds: 30.0
+  min_request_interval_seconds: 0.35
+  calls_per_minute_limit: 200
+
+dates:
+  raw_start: "20160101"
+  backtest_start: "20170103"
+  end: "20251231"
+
+download:
+  include_daily_basic: true
+  include_suspensions: true
+  include_instrument_master: true
+  include_industry: true
+  industry_taxonomies: [SW2014, SW2021]
+  supplement_industry_by_instrument: true
+
+research:
+  factor_window: 5
+  rebalance_every: 5
+  top_n: 50
+  initial_cash: 1.0
+  linear_cost_bps: 5.0
+  stamp_duty_change_date: "20230828"
+  stamp_duty_before: 0.001
+  stamp_duty_after: 0.0005
+  price_limit_tolerance: 0.000001
+
+risk:
+  lookback: 252
+  min_history: 120
+  annualization: 252
+  missing_annual_volatility: 0.80
+  variance_floor: 0.00000001
+  return_clip: 0.20
+
+optimizer:
+  enabled: true
+  risk_aversion: 3.0
+  risk_horizon_days: 5
+  l2_penalty: 0.01
+  active_cap: 0.01
+  name_cap: 0.03
+  turnover_cap: 0.35
+  initial_turnover_cap: 1.0
+  exposure_cap: 0.02
+  solvers: [CLARABEL, OSQP]
+  feasibility_tolerance: 0.000001
+  liquidity_enabled: true
+  portfolio_aum_cny: 100000000
+  adv_lookback: 20
+  min_adv_observations: 10
+  max_adv_participation: 0.05
+  impact_bps_at_max_participation: 10.0
+
+features:
+  label_horizon: 5
+  min_factor_coverage: 0.80
+  mad_clip: 5.0
+  industry_coverage_threshold: 0.90
+  industry_transition_date: "20211213"
+
+workflow:
+  feature_start: "20170103"
+  portfolio_start: "20210104"
+  refit_every: 4
+  factors: []
+  feature_provider:
+    name: builtin_daily
+    params: {}
+  selector:
+    name: all
+    params: {}
+  model:
+    name: direction_equal_weight
+    params:
+      min_factor_fraction: 0.50
+  calibrator:
+    name: robust_cross_section
+    params:
+      target_scale: 0.01
+      score_clip: 3.0
+
+experiment:
+  stage: validation
+  protocol_id: csi500-baseline-v1
+  train_start: "20170103"
+  train_end: "20201231"
+  validation_start: "20210104"
+  validation_end: "20221230"
+  test_start: "20230103"
+  test_end: "20251231"
+  embargo_days: 5
+  allow_frozen_test: false

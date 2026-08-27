@@ -1,0 +1,71 @@
+{
+  "chart_map": {
+    "backtest-overview.png": {
+      "fields": [
+        "trade_date",
+        "nav",
+        "benchmark_nav"
+      ],
+      "note": "Portfolio and benchmark paths are shown net of modeled costs.",
+      "scope": "扩展验证期（非最终留出期）",
+      "title": "Selected method NAV and drawdown",
+      "type": "two-panel line and drawdown chart"
+    },
+    "innovation-ablation.png": {
+      "fields": [
+        "trial_id",
+        "information_ratio",
+        "mean_factor_weight_l1_change"
+      ],
+      "note": "The stability term reduced factor-weight movement and also reduced information ratio in the same evaluation window.",
+      "scope": "C0-C4 method-selection ablation",
+      "title": "IC synthesis ablation",
+      "type": "paired dot plots"
+    },
+    "stress-analysis.png": {
+      "fields": [
+        "scenario_id",
+        "information_ratio",
+        "cost_bps_of_executed_notional"
+      ],
+      "note": "Cost settings affect both optimizer turnover and simulated execution cost; information ratio is therefore not mechanically monotonic.",
+      "scope": "selected signals fixed; risk, optimization and execution rerun",
+      "title": "Cost and capacity stress",
+      "type": "paired dot plots with baseline references"
+    }
+  },
+  "evaluation_role": "extended_validation",
+  "outputs": {
+    "backtest-overview.png": "5ae5d3ea147c1d111990d59cf394c516a5122957a77e95aff8466f37d5413650",
+    "innovation-ablation.png": "06425f1ed78b1887b038e166ec521c2c7fa24463937b5447202760d629c74d94",
+    "public-summary.json": "ded65cfc1fbe76807cc0d6d6adae28ee796f5c3e4c376dc6adf5ff74e3803e23",
+    "stress-analysis.png": "dcf894b12e539ab37fb168d71d73b1ed51a5343cfb4ef47fe5dda10187554d29"
+  },
+  "public_boundary": "Aggregate statistics and raster figures only. Signals, holdings, trades, index weights, vendor rows and local paths are excluded.",
+  "schema_version": 2,
+  "selected_trial_id": "d1_ic_full_calibrated",
+  "source_artifacts": {
+    "ablation/c0_ic_raw-manifest.json": "37920ba116d154f1b76aeb1ebb73333ff028ddeb2e3c3268c8889228682fe031",
+    "ablation/c1_ic_uncertainty-manifest.json": "4b860b96a057c428ca37fcfe48f55897f69967cec32763df9e4245abfe992907",
+    "ablation/c2_ic_correlation-manifest.json": "959c7cf17013388b5d6253a4f924687d660721a99748dd6d9758b23c44c288d5",
+    "ablation/c3_ic_cost-manifest.json": "204ee6f2c627574932b3d6dbfa7dac802f631bbf5a402af05c207a5035703bfa",
+    "ablation/c4_ic_full-manifest.json": "c273c3fe84f16c455ca6be1fcac62d18ae9286459988c8126b6565508ccb8f21",
+    "ablation/study-manifest.json": "f5bfa58e8285eb94f0a48be9b0521022bbee3dde0e6944f4d9994b6332ac2fdc",
+    "generator/reporting.py": "897e6af30a3fe202e35801997ae52fe8377af0722c8352af53a54795d0f377b4",
+    "primary/selected-daily.parquet": "28d180cafa6c3dc3954d95bccae186935ebf3404fdf806f5ddeeb7791da8c97b",
+    "primary/selected-run-manifest.json": "b73eafb1c66e753b0f9a8d614e6bda0f8581495a806c74e2ab791bd7260fa7c4",
+    "primary/selected-trial-manifest.json": "700dab7cf1bca4b68276659b2f9df7f04bd33a15a76d8a10461e93420aabdda6",
+    "primary/selection.json": "844fcc7baebb4c9989a867168be2b41e2d1f552a94a150334e588e010c1d60ea",
+    "primary/study-manifest.json": "1058c4a50b1a64d7eb7a4d782418fc67dd3aab41711e60cfe887ba241d333193",
+    "stress/aum_300m-manifest.json": "c8aeb76c638700b9aeb2efd7908aa6c5ae15b3a2739d8f52003da91eac5c28eb",
+    "stress/aum_50m-manifest.json": "ed02ce04f4ab10717340fd3fd2dda20ef181fa2813ae0011e08bce19ece9b5a6",
+    "stress/baseline-manifest.json": "fef9b7952989fb6175426fec7d454f3cb0d1ce80bcba66502daf9e70be3006f0",
+    "stress/cost_0_5x-manifest.json": "c899fc0abef67e1b9784e175d864ce643f19a3cdf6bcd30736c998bf02749cc1",
+    "stress/cost_2_0x-manifest.json": "66c0923725d90b49324916f887b8e7f940627cf2c21a103b9fca504cac3a0d21",
+    "stress/participation_10pct-manifest.json": "191c6945d2817408aad5d8a44cff2623b9f10fc7bf9b85e1f844b23db47822b9",
+    "stress/participation_20pct-manifest.json": "94542c4df82ce71dd475f68459654b0c80f79ea58cbfb5eac7c21667d0731af6",
+    "stress/stress-manifest.json": "bda9fddbd7ba37827c83e3af31b16d8b955ed9b25cecd7a24e896712ba3c17f5",
+    "stress/stress-summary.json": "64775e440fac191bbd51edcd4f642f3875fec9e368f00daf3102c1773de21db7"
+  },
+  "study_id": "adaptive-bridge-v1"
+}
