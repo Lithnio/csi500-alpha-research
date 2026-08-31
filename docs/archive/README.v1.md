@@ -47,7 +47,7 @@
 
 候选池包含 25 个反转、动量、风险、流动性、规模、估值和交互因子。每次拟合先按覆盖率、IC 方向、分段稳定性、五分组单调性、信号变化率、相关性和因子家族上限筛选，再对因子 IC 作经验贝叶斯收缩。合成权重由下式确定：
 
-$$
+```math
 \max_{w}\quad
 \widetilde{\mu}_{IC}^{\mathsf T}w
 -\lambda_{corr}w^{\mathsf T}Rw
@@ -55,9 +55,9 @@ $$
 -\lambda_{stable}\lVert w-w_{prev}\rVert_2^2,
 \qquad
 w\ge 0,\ \mathbf 1^{\mathsf T}w=1,\ w_i\le w_{max}.
-$$
+```
 
-其中，$\widetilde{\mu}_{IC}$ 为收缩后的有向 IC，$R$ 为因子相关冗余矩阵，$c$ 为信号变化率代理，$w_{prev}$ 为上一次拟合权重。该方法同时约束统计不确定性、重复暴露、交易活跃度和跨期权重漂移。
+其中，$`\widetilde{\mu}_{IC}`$ 为收缩后的有向 IC，$`R`$ 为因子相关冗余矩阵，$`c`$ 为信号变化率代理，$`w_{prev}`$ 为上一次拟合权重。该方法同时约束统计不确定性、重复暴露、交易活跃度和跨期权重漂移。
 
 ![IC 合成消融](../assets/innovation-ablation.png)
 

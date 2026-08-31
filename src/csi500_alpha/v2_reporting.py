@@ -37,6 +37,23 @@ _FAMILY_LABELS = {
     "value": "估值",
 }
 
+_FACTOR_LABELS = {
+    "amihud_20": "非流动性（20日）",
+    "book_to_market": "账面市值比",
+    "cash_return_on_assets_ttm": "现金资产回报率",
+    "cfo_yield_ttm": "经营现金流收益率",
+    "earnings_yield_ttm": "盈利收益率",
+    "free_turnover_20": "自由流通换手率",
+    "gross_profitability_ttm": "毛利率",
+    "low_downside_vol_60": "低下行波动",
+    "low_idio_vol_60": "低特质波动",
+    "low_range_vol_20": "低振幅波动",
+    "momentum_250_20": "长期动量",
+    "roe_change_yoy": "ROE 同比变化",
+    "sales_to_price_ttm": "市销率倒数",
+    "total_accruals_ttm": "总应计",
+}
+
 
 @dataclass(frozen=True)
 class V2ReadmeReportResult:
@@ -61,6 +78,8 @@ class _AnnualEvidence:
     summary: dict[str, Any]
     daily: pd.DataFrame
     yearly: pd.DataFrame
+    evaluation_signals: pd.DataFrame | None = None
+    evaluation_labels: pd.DataFrame | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +90,7 @@ class _FactorEvidence:
     factors: pd.DataFrame
     yearly: pd.DataFrame
     correlation: pd.DataFrame
+    spreads: pd.DataFrame
 
 
 @dataclass(frozen=True)
@@ -92,7 +112,7 @@ def build_v2_readme_report(
     factor_audit_root: str | Path,
     output_root: str | Path,
 ) -> V2ReadmeReportResult:
-    """Build repository-facing v2 figures from fingerprinted aggregate evidence."""
+    """Build repository-facing v2.1 figures from fingerprinted aggregate evidence."""
 
     comparison_baseline = _load_annual_evidence(
         Path(baseline_root).resolve(),
@@ -159,6 +179,12 @@ def build_v2_readme_report(
         "selection/released/yearly-metrics.parquet": (
             released.root / "yearly-metrics.parquet"
         ),
+        "selection/released/evaluation-signals.parquet": (
+            released.root / "evaluation-signals.parquet"
+        ),
+        "selection/released/evaluation-labels.parquet": (
+            released.root / "evaluation-labels.parquet"
+        ),
         "selection/challenger/aggregate-manifest.json": (
             selection.challenger.root / "aggregate-manifest.json"
         ),
@@ -174,27 +200,29 @@ def build_v2_readme_report(
             factor_audit.root / "factor-correlation.parquet"
         ),
         "factor-audit/yearly-audit.parquet": factor_audit.root / "yearly-audit.parquet",
+        "factor-audit/rebalance-spreads.parquet": (
+            factor_audit.root / "rebalance-spreads.parquet"
+        ),
     }
     chart_map = {
         figures[0].name: {
-            "question": "冻结方案在 2020—2025 年滚动年度研究折中的净值与主动回撤如何？",
+            "question": "组合在 2020—2025 年滚动年度研究折中的净值与主动回撤如何？",
             "takeaway": (
-                "六个研究年度折累计主动收益为 9.76%，五个年度为正；该区间不是新的独立最终留出样本。"
+                "六个研究年度折累计主动收益为 9.76%，五个年度为正；组合最大回撤为 35.67%。"
             ),
-            "type": "three-panel line and drawdown chart",
+            "type": "三面板净值与回撤折线图",
             "fields": ["trade_date", "nav", "benchmark_nav", "active_nav"],
         },
         figures[1].name: {
-            "question": "42 个候选因子的正式审计如何收缩因子池，证据是否随时间衰减？",
+            "question": "通过审计的单因子，其截面 IC 与费后分组收益是否一致？",
             "takeaway": (
-                "14 个因子通过跨年覆盖率、IC 与净多空价差门槛；2025 年仅 7 个保持正净价差。"
+                "单因子平均定向 Rank IC 的中位数为 0.021，费后多空 Sharpe 中位数为 0.631。"
             ),
-            "type": "family count bars and yearly evidence bars",
+            "type": "双栏横向条形图",
             "fields": [
-                "family",
-                "eligible",
-                "year",
-                "mean_q5_minus_q1_net",
+                "factor",
+                "mean_directed_rank_ic",
+                "q5_minus_q1_net",
             ],
         },
         figures[2].name: {
@@ -202,26 +230,22 @@ def build_v2_readme_report(
             "takeaway": (
                 "扩池提高全期汇总收益，但年度增量中位数为负，正主动收益年份由五个降至四个。"
             ),
-            "type": "paired annual bar charts",
+            "type": "年度对照柱状图",
             "fields": ["year", "annualized_active_return", "increment_vs_baseline"],
         },
     }
     outputs = {path.name: sha256_file(path) for path in (*figures, summary_path)}
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "public_boundary": (
-            "Aggregate metrics and raster figures only. Holdings, trades, signals, "
-            "vendor rows, credentials and local paths are excluded."
+            "仅包含聚合指标和栅格图片；不包含持仓、成交、逐行信号、"
+            "供应商原始数据、凭证或本地路径。"
         ),
-        "source_ids": {
-            "release_annual_id": selection.annual_manifest.get("annual_id"),
-            "released_trial_id": released.summary.get("trial_id"),
-            "challenger_trial_id": selection.challenger.summary.get("trial_id"),
-            "comparison_annual_id": comparison_baseline.manifest.get("annual_id"),
-            "comparison_baseline_trial_id": comparison_baseline.summary.get("trial_id"),
-            "expanded_trial_id": expanded.summary.get("trial_id"),
-            "factor_audit_id": factor_audit.summary.get("audit_id"),
-            "factor_audit_run_id": factor_audit.summary.get("run_id"),
+        "source_scope": {
+            "rolling_evaluation": "2020-2025",
+            "factor_audit": "2017-2025",
+            "released_candidate_count": 42,
+            "expanded_candidate_count": 48,
         },
         "source_artifacts": {
             name: sha256_file(path) for name, path in sorted(source_artifacts.items())
@@ -239,11 +263,18 @@ def build_v2_readme_report(
     )
 
 
-def _load_annual_evidence(root: Path, label: str) -> _AnnualEvidence:
+def _load_annual_evidence(
+    root: Path,
+    label: str,
+    *,
+    require_signal_diagnostics: bool = False,
+) -> _AnnualEvidence:
     manifest_path = root / "aggregate-manifest.json"
     summary_path = root / "aggregate-summary.json"
     daily_path = root / "daily.parquet"
     yearly_path = root / "yearly-metrics.parquet"
+    signals_path = root / "evaluation-signals.parquet"
+    labels_path = root / "evaluation-labels.parquet"
     manifest = _read_object(manifest_path, f"{label} manifest")
     if manifest.get("status") != "completed" or manifest.get("error") is not None:
         raise ConfigurationError(f"{label} aggregate is not complete")
@@ -257,6 +288,12 @@ def _load_annual_evidence(root: Path, label: str) -> _AnnualEvidence:
         ("yearly-metrics.parquet", yearly_path),
     ):
         _verify_fingerprint(path, fingerprints.get(name), f"{label} {name}")
+    if require_signal_diagnostics:
+        for name, path in (
+            ("evaluation-signals.parquet", signals_path),
+            ("evaluation-labels.parquet", labels_path),
+        ):
+            _verify_fingerprint(path, fingerprints.get(name), f"{label} {name}")
     summary = _read_object(summary_path, f"{label} summary")
     if manifest.get("summary") != summary:
         raise ConfigurationError(f"{label} manifest summary does not match its artifact")
@@ -264,8 +301,12 @@ def _load_annual_evidence(root: Path, label: str) -> _AnnualEvidence:
         raise ConfigurationError(f"{label} did not pass aggregate quality checks")
     daily = pd.read_parquet(daily_path)
     yearly = pd.read_parquet(yearly_path)
+    signals = pd.read_parquet(signals_path) if require_signal_diagnostics else None
+    labels = pd.read_parquet(labels_path) if require_signal_diagnostics else None
     _validate_daily(daily, label)
     _validate_yearly(yearly, label)
+    if signals is not None and labels is not None:
+        _validate_signal_diagnostics(signals, labels, label)
     if int(summary.get("fold_count", -1)) != len(yearly):
         raise ConfigurationError(f"{label} fold count does not match yearly metrics")
     return _AnnualEvidence(
@@ -274,6 +315,8 @@ def _load_annual_evidence(root: Path, label: str) -> _AnnualEvidence:
         summary=summary,
         daily=daily,
         yearly=yearly,
+        evaluation_signals=signals,
+        evaluation_labels=labels,
     )
 
 
@@ -283,6 +326,7 @@ def _load_factor_evidence(root: Path) -> _FactorEvidence:
     factor_path = root / "factor-summary.parquet"
     correlation_path = root / "factor-correlation.parquet"
     yearly_path = root / "yearly-audit.parquet"
+    spreads_path = root / "rebalance-spreads.parquet"
     manifest = _read_object(manifest_path, "Factor-audit manifest")
     summary = _read_object(summary_path, "Factor-audit summary")
     if manifest.get("status") != "success" or summary.get("status") != "success":
@@ -302,12 +346,14 @@ def _load_factor_evidence(root: Path) -> _FactorEvidence:
         ("factor_audit_summary", summary_path),
         ("factor_correlation", correlation_path),
         ("factor_summary", factor_path),
+        ("rebalance_spreads", spreads_path),
         ("yearly_audit", yearly_path),
     ):
         _verify_fingerprint(path, fingerprints.get(key), f"Factor-audit {key}")
     factors = pd.read_parquet(factor_path)
     correlation = pd.read_parquet(correlation_path)
     yearly = pd.read_parquet(yearly_path)
+    spreads = pd.read_parquet(spreads_path)
     required_factor = {
         "factor",
         "family",
@@ -317,8 +363,10 @@ def _load_factor_evidence(root: Path) -> _FactorEvidence:
         "median_yearly_q5_minus_q1_net",
     }
     required_yearly = {"year", "factor", "mean_q5_minus_q1_net"}
+    required_spreads = {"decision_date", "factor", "q5_minus_q1_net"}
     _require_columns(factors, required_factor, "Factor summary")
     _require_columns(yearly, required_yearly, "Yearly factor audit")
+    _require_columns(spreads, required_spreads, "Factor rebalance spreads")
     if factors["factor"].astype(str).duplicated().any():
         raise ConfigurationError("Factor summary contains duplicate factors")
     eligible_count = int(factors["eligible"].astype(bool).sum())
@@ -332,6 +380,12 @@ def _load_factor_evidence(root: Path) -> _FactorEvidence:
         raise ConfigurationError("Factor-correlation rows do not match the factor summary")
     if not factor_names.issubset(correlation.columns):
         raise ConfigurationError("Factor-correlation columns do not match the factor summary")
+    spread_names = set(spreads["factor"].astype(str))
+    if not factor_names.issubset(spread_names):
+        raise ConfigurationError("Factor rebalance spreads do not cover the factor summary")
+    spread_keys = spreads[["decision_date", "factor"]].astype(str)
+    if spread_keys.duplicated().any():
+        raise ConfigurationError("Factor rebalance spreads contain duplicate factor dates")
     return _FactorEvidence(
         root=root,
         manifest=manifest,
@@ -339,6 +393,7 @@ def _load_factor_evidence(root: Path) -> _FactorEvidence:
         factors=factors,
         yearly=yearly,
         correlation=correlation,
+        spreads=spreads,
     )
 
 
@@ -390,7 +445,11 @@ def _load_selection_evidence(
             "V2 release reporting requires one selected method and one challenger"
         )
 
-    released = _load_annual_evidence(root / "aggregates" / selected_id, "Released method")
+    released = _load_annual_evidence(
+        root / "aggregates" / selected_id,
+        "Released method",
+        require_signal_diagnostics=True,
+    )
     challenger = _load_annual_evidence(
         root / "aggregates" / challengers[0],
         "Release challenger",
@@ -558,6 +617,15 @@ def _public_summary(
         )
     )
     eligible = factors.loc[factors["eligible"].astype(bool)].copy()
+    factor_statistics = _factor_spread_statistics(factor_audit)
+    eligible = eligible.merge(
+        factor_statistics,
+        on="factor",
+        how="left",
+        validate="one_to_one",
+    )
+    if eligible["net_spread_sharpe"].isna().any():
+        raise ConfigurationError("Eligible factors lack fee-adjusted spread statistics")
     eligible_components = _correlation_components(
         factor_audit.correlation,
         eligible["factor"].astype(str),
@@ -582,25 +650,31 @@ def _public_summary(
         .sort_values("year")
     )
 
-    released_public = _annual_public_metrics(
-        released_metrics,
-        released_yearly,
-        released_execution,
-        released.summary,
-    )
-    expanded_public = _annual_public_metrics(
-        expanded_metrics,
-        expanded_yearly,
-        expanded_execution,
-        expanded.summary,
-    )
+    released_public = {
+        **_annual_public_metrics(
+            released_metrics,
+            released_yearly,
+            released_execution,
+            released.summary,
+        ),
+        **_portfolio_path_diagnostics(released),
+    }
+    expanded_public = {
+        **_annual_public_metrics(
+            expanded_metrics,
+            expanded_yearly,
+            expanded_execution,
+            expanded.summary,
+        ),
+        **_portfolio_path_diagnostics(expanded),
+    }
+    signal_diagnostics = _composite_signal_diagnostics(released)
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "release": {
-            "version": "2.0.0",
+            "version": "2.1.0",
             "status": "research_release",
             "publication_gate_assessment": _publication_gate_summary(selection),
-            "candidate_signal_check": _candidate_signal_summary(selection),
         },
         "scope": {
             "evaluation_role": "rolling_annual_research",
@@ -609,8 +683,14 @@ def _public_summary(
             "fold_years": [int(value) for value in released.yearly["year"]],
             "benchmark": "CSI 500 total-return proxy",
             "costs_included": True,
+            "annualization_assumptions": {
+                "trading_days": 252,
+                "factor_and_signal_horizon_days": 5,
+                "absolute_sharpe_risk_free_rate": 0.0,
+            },
         },
         "released_method": released_public,
+        "signal_diagnostics": signal_diagnostics,
         "expanded_pool_ablation": {
             **expanded_public,
             "delta_annualized_active_return": (
@@ -657,6 +737,36 @@ def _public_summary(
             ),
             "correlation_threshold": 0.75,
             "eligible_correlation_component_count": len(eligible_components),
+            "distribution_summary": {
+                "median_directed_rank_ic": _finite(
+                    eligible["mean_directed_rank_ic"].median(),
+                    "Median directed Rank IC",
+                ),
+                "minimum_directed_rank_ic": _finite(
+                    eligible["mean_directed_rank_ic"].min(),
+                    "Minimum directed Rank IC",
+                ),
+                "maximum_directed_rank_ic": _finite(
+                    eligible["mean_directed_rank_ic"].max(),
+                    "Maximum directed Rank IC",
+                ),
+                "median_net_spread_sharpe": _finite(
+                    eligible["net_spread_sharpe"].median(),
+                    "Median fee-adjusted spread Sharpe",
+                ),
+                "minimum_net_spread_sharpe": _finite(
+                    eligible["net_spread_sharpe"].min(),
+                    "Minimum fee-adjusted spread Sharpe",
+                ),
+                "maximum_net_spread_sharpe": _finite(
+                    eligible["net_spread_sharpe"].max(),
+                    "Maximum fee-adjusted spread Sharpe",
+                ),
+                "median_net_spread_max_drawdown": _finite(
+                    eligible["net_spread_max_drawdown"].median(),
+                    "Median fee-adjusted spread drawdown",
+                ),
+            },
             "family_rows": [
                 {
                     "family": str(row.family),
@@ -679,6 +789,23 @@ def _public_summary(
                         row.median_yearly_q5_minus_q1_net,
                         "Median yearly net spread",
                     ),
+                    "net_spread_observations": int(row.net_spread_observations),
+                    "mean_net_spread": _finite(
+                        row.mean_net_spread,
+                        "Mean fee-adjusted spread",
+                    ),
+                    "net_spread_sharpe": _finite(
+                        row.net_spread_sharpe,
+                        "Fee-adjusted spread Sharpe",
+                    ),
+                    "net_spread_max_drawdown": _finite(
+                        row.net_spread_max_drawdown,
+                        "Fee-adjusted spread max drawdown",
+                    ),
+                    "positive_net_spread_fraction": _finite(
+                        row.positive_net_spread_fraction,
+                        "Positive fee-adjusted spread fraction",
+                    ),
                 }
                 for row in eligible.sort_values(["family", "factor"]).itertuples(index=False)
             ],
@@ -696,21 +823,220 @@ def _public_summary(
             ],
         },
         "evidence_boundary": [
-            (
-                "The 2020-2025 results are rolling annual research folds, "
-                "not a new independent holdout."
-            ),
-            (
-                "The factor audit is aggregate diagnostic evidence and does not "
-                "replace fold-internal selection."
-            ),
-            (
-                "The 2026 H1 holdout is a revealed diagnostic for the prior method, "
-                "not an independent holdout for v2."
-            ),
-            "Costs and capacity are modeled; the results are not live trading evidence.",
+            "2020—2025 年结果来自滚动年度研究折，不是新的独立最终留出样本。",
+            "单因子指标是 2017—2025 年全样本诊断，不替代各年度折内部的重新筛选。",
+            "合成信号分组收益未扣交易成本；组合收益已扣模型化交易成本。",
+            "成本与容量均为模型估计，结果不代表实盘业绩。",
         ],
     }
+
+
+def _portfolio_path_diagnostics(evidence: _AnnualEvidence) -> dict[str, float]:
+    nav = pd.to_numeric(evidence.daily["nav"], errors="coerce").astype(float)
+    benchmark = pd.to_numeric(evidence.daily["benchmark_nav"], errors="coerce").astype(float)
+    portfolio_returns = nav.pct_change(fill_method=None).dropna()
+    benchmark_returns = benchmark.pct_change(fill_method=None).dropna()
+    portfolio_drawdown = _nav_max_drawdown(nav, "Portfolio NAV")
+    benchmark_drawdown = _nav_max_drawdown(benchmark, "Benchmark NAV")
+    declared = _as_mapping(evidence.summary.get("metrics"), "Annual metrics")
+    declared_portfolio_drawdown = declared.get("portfolio_max_drawdown")
+    if declared_portfolio_drawdown is not None and not math.isclose(
+        portfolio_drawdown,
+        _finite(declared_portfolio_drawdown, "Declared portfolio max drawdown"),
+        rel_tol=0.0,
+        abs_tol=1e-10,
+    ):
+        raise ConfigurationError("Portfolio max drawdown does not match the daily NAV path")
+    return {
+        "portfolio_total_return": _finite(nav.iloc[-1] / nav.iloc[0] - 1.0, "Portfolio return"),
+        "benchmark_total_return": _finite(
+            benchmark.iloc[-1] / benchmark.iloc[0] - 1.0,
+            "Benchmark return",
+        ),
+        "portfolio_sharpe_rf0": _annualized_sharpe(
+            portfolio_returns,
+            periods_per_year=252.0,
+            label="Portfolio Sharpe",
+        ),
+        "benchmark_sharpe_rf0": _annualized_sharpe(
+            benchmark_returns,
+            periods_per_year=252.0,
+            label="Benchmark Sharpe",
+        ),
+        "portfolio_max_drawdown": portfolio_drawdown,
+        "benchmark_max_drawdown": benchmark_drawdown,
+    }
+
+
+def _factor_spread_statistics(evidence: _FactorEvidence) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    frame = evidence.spreads.copy()
+    frame["decision_date"] = frame["decision_date"].astype(str)
+    for factor, group in frame.groupby(frame["factor"].astype(str), sort=True):
+        ordered = group.sort_values("decision_date")
+        values = pd.to_numeric(ordered["q5_minus_q1_net"], errors="coerce").dropna()
+        if len(values) < 12:
+            raise ConfigurationError(
+                f"Factor {factor} has too few fee-adjusted spread observations"
+            )
+        if (~values.map(math.isfinite)).any() or (values <= -1.0).any():
+            raise ConfigurationError(f"Factor {factor} has invalid fee-adjusted spread returns")
+        rows.append(
+            {
+                "factor": str(factor),
+                "net_spread_observations": int(len(values)),
+                "mean_net_spread": _finite(values.mean(), "Mean factor spread"),
+                "net_spread_sharpe": _annualized_sharpe(
+                    values,
+                    periods_per_year=252.0 / 5.0,
+                    label=f"Factor {factor} spread Sharpe",
+                ),
+                "net_spread_max_drawdown": _return_max_drawdown(
+                    values,
+                    f"Factor {factor} spread",
+                ),
+                "positive_net_spread_fraction": _finite(
+                    values.gt(0.0).mean(),
+                    "Positive factor spread fraction",
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _composite_signal_diagnostics(evidence: _AnnualEvidence) -> dict[str, Any]:
+    if evidence.evaluation_signals is None or evidence.evaluation_labels is None:
+        raise ConfigurationError("Released method lacks composite-signal evidence")
+    keys = ["decision_date", "instrument", "fold_year"]
+    signals = evidence.evaluation_signals[
+        [*keys, "expected_return"]
+    ].copy()
+    labels = evidence.evaluation_labels[
+        [*keys, "forward_active_return", "label_valid"]
+    ].copy()
+    joined = signals.merge(
+        labels,
+        on=keys,
+        how="outer",
+        validate="one_to_one",
+        indicator=True,
+    )
+    if not joined["_merge"].eq("both").all():
+        raise ConfigurationError("Composite-signal rows do not align with evaluation labels")
+    joined = joined.drop(columns="_merge")
+    joined["expected_return"] = pd.to_numeric(joined["expected_return"], errors="coerce")
+    joined["forward_active_return"] = pd.to_numeric(
+        joined["forward_active_return"],
+        errors="coerce",
+    )
+    sample = joined.loc[
+        joined["label_valid"].eq(True)
+        & joined["expected_return"].notna()
+        & joined["forward_active_return"].notna()
+    ].copy()
+    if sample.empty:
+        raise ConfigurationError("Composite-signal evidence has no realized observations")
+    for column in ("expected_return", "forward_active_return"):
+        if (~sample[column].map(math.isfinite)).any():
+            raise ConfigurationError(f"Composite-signal evidence has invalid {column}")
+
+    rank_ics: list[float] = []
+    spread_rows: list[float] = []
+    for _, group in sample.groupby("decision_date", sort=True):
+        if len(group) < 5 or group["expected_return"].nunique() < 2:
+            continue
+        rank_ic = group["expected_return"].corr(
+            group["forward_active_return"],
+            method="spearman",
+        )
+        if pd.notna(rank_ic):
+            rank_ics.append(float(rank_ic))
+        percentile = group["expected_return"].rank(method="first", pct=True)
+        quintile = (percentile * 5.0).apply(math.ceil).clip(1, 5).astype(int)
+        realized = group.assign(_quintile=quintile).groupby("_quintile")[
+            "forward_active_return"
+        ].mean()
+        if {1, 5}.issubset(realized.index):
+            spread_rows.append(float(realized.loc[5] - realized.loc[1]))
+    if len(rank_ics) < 2 or len(spread_rows) < 2:
+        raise ConfigurationError("Composite-signal evidence has too few decision dates")
+
+    evaluation = _as_mapping(evidence.summary.get("evaluation"), "Released evaluation")
+    calibration = _as_mapping(evaluation.get("calibration"), "Released calibration")
+    mean_rank_ic = _finite(pd.Series(rank_ics).mean(), "Composite mean Rank IC")
+    mean_spread = _finite(pd.Series(spread_rows).mean(), "Composite gross spread")
+    for observed, declared_key, label in (
+        (mean_rank_ic, "mean_daily_rank_ic", "Composite Rank IC"),
+        (mean_spread, "top_minus_bottom_realized_return", "Composite spread"),
+    ):
+        declared = _finite(calibration.get(declared_key), f"Declared {label}")
+        if not math.isclose(observed, declared, rel_tol=0.0, abs_tol=1e-12):
+            raise ConfigurationError(f"{label} does not match the aggregate evaluation")
+    if int(calibration.get("rank_ic_dates", -1)) != len(rank_ics):
+        raise ConfigurationError("Composite Rank-IC date count does not match the evaluation")
+
+    spreads = pd.Series(spread_rows, dtype=float)
+    return {
+        "realized_observations": int(len(sample)),
+        "rank_ic_dates": int(len(rank_ics)),
+        "mean_daily_rank_ic": mean_rank_ic,
+        "quintile_monotonicity": _finite(
+            calibration.get("quintile_monotonicity"),
+            "Composite quintile monotonicity",
+        ),
+        "directional_hit_rate": _finite(
+            calibration.get("directional_hit_rate"),
+            "Composite directional hit rate",
+        ),
+        "gross_q5_minus_q1_mean": mean_spread,
+        "gross_q5_minus_q1_sharpe": _annualized_sharpe(
+            spreads,
+            periods_per_year=252.0 / 5.0,
+            label="Composite gross spread Sharpe",
+        ),
+        "gross_q5_minus_q1_max_drawdown": _return_max_drawdown(
+            spreads,
+            "Composite gross spread",
+        ),
+        "positive_gross_spread_fraction": _finite(
+            spreads.gt(0.0).mean(),
+            "Positive composite spread fraction",
+        ),
+        "spread_cost_treatment": "gross_before_transaction_costs",
+    }
+
+
+def _annualized_sharpe(
+    values: pd.Series,
+    *,
+    periods_per_year: float,
+    label: str,
+) -> float:
+    numeric = pd.to_numeric(values, errors="coerce").dropna().astype(float)
+    if len(numeric) < 2 or (~numeric.map(math.isfinite)).any():
+        raise ConfigurationError(f"{label} requires at least two finite observations")
+    volatility = float(numeric.std(ddof=1))
+    if volatility <= 1e-14:
+        raise ConfigurationError(f"{label} is undefined because volatility is zero")
+    return _finite(
+        math.sqrt(periods_per_year) * float(numeric.mean()) / volatility,
+        label,
+    )
+
+
+def _return_max_drawdown(values: pd.Series, label: str) -> float:
+    numeric = pd.to_numeric(values, errors="coerce").dropna().astype(float)
+    if numeric.empty or (~numeric.map(math.isfinite)).any() or (numeric <= -1.0).any():
+        raise ConfigurationError(f"{label} returns are invalid")
+    nav = pd.concat([pd.Series([1.0]), (1.0 + numeric).cumprod()], ignore_index=True)
+    return _nav_max_drawdown(nav, label)
+
+
+def _nav_max_drawdown(values: pd.Series, label: str) -> float:
+    nav = pd.to_numeric(values, errors="coerce").dropna().astype(float)
+    if nav.empty or (~nav.map(math.isfinite)).any() or (nav <= 0.0).any():
+        raise ConfigurationError(f"{label} is invalid")
+    return _finite((nav / nav.cummax() - 1.0).min(), f"{label} max drawdown")
 
 
 def _publication_gate_summary(selection: _SelectionEvidence) -> dict[str, Any]:
@@ -744,78 +1070,6 @@ def _publication_gate_summary(selection: _SelectionEvidence) -> dict[str, Any]:
     }
 
 
-def _candidate_signal_summary(selection: _SelectionEvidence) -> dict[str, Any]:
-    path = selection.challenger.root / "model-fits.parquet"
-    fits = pd.read_parquet(path)
-    _require_columns(
-        fits,
-        {"fold_year", "fit_date", "status", "model_parameters"},
-        "Release challenger model fits",
-    )
-    fold_rows: list[dict[str, Any]] = []
-    observed_shares: list[float] = []
-    for year, group in fits.groupby(pd.to_numeric(fits["fold_year"], errors="raise")):
-        evidence_rows: list[dict[str, Any]] = []
-        for row in group.sort_values("fit_date").itertuples(index=False):
-            parameters = _parse_json_mapping(row.model_parameters)
-            if "candidate_share" not in parameters:
-                continue
-            sleeve = parameters.get("sleeve_evidence")
-            sleeve_mapping = dict(sleeve) if isinstance(sleeve, Mapping) else {}
-            share = _finite(parameters.get("candidate_share"), "Candidate share")
-            observed_shares.append(share)
-            oof_t = sleeve_mapping.get("oof_t")
-            evidence_rows.append(
-                {
-                    "fit_date": str(row.fit_date),
-                    "actual_candidate_share": share,
-                    "oof_t": None if oof_t is None else _finite(oof_t, "Candidate OOF t"),
-                    "oof_evidence_passed": sleeve_mapping.get("oof_evidence_passed") is True,
-                }
-            )
-        if evidence_rows:
-            final = evidence_rows[-1]
-            fold_rows.append(
-                {
-                    "year": int(year),
-                    "status": "evaluated",
-                    "fit_count": len(evidence_rows),
-                    "maximum_candidate_share": max(
-                        float(item["actual_candidate_share"]) for item in evidence_rows
-                    ),
-                    "final_oof_t": final["oof_t"],
-                    "oof_evidence_passed": any(
-                        bool(item["oof_evidence_passed"]) for item in evidence_rows
-                    ),
-                }
-            )
-        else:
-            no_factor_count = int((group["status"].astype(str) == "no_selected_factors").sum())
-            if no_factor_count != len(group):
-                raise ConfigurationError("Release challenger has unexplained model-fit rows")
-            fold_rows.append(
-                {
-                    "year": int(year),
-                    "status": "no_selected_factors",
-                    "fit_count": len(group),
-                    "maximum_candidate_share": 0.0,
-                    "final_oof_t": None,
-                    "oof_evidence_passed": False,
-                }
-            )
-    maximum_share = max(observed_shares, default=0.0)
-    return {
-        "portfolio_path_identical": True,
-        "maximum_actual_candidate_share": maximum_share,
-        "active_allocation_years": sum(
-            float(row["maximum_candidate_share"]) > 0.0 for row in fold_rows
-        ),
-        "year_count": len(fold_rows),
-        "promoted": False,
-        "fold_rows": fold_rows,
-    }
-
-
 def _resolve_metric_path(value: Mapping[str, Any], path: str) -> Any:
     current: Any = value
     for part in path.split("."):
@@ -839,20 +1093,6 @@ def _evaluate_gate(observed: Any, operator: str, threshold: Any) -> bool:
     raise ConfigurationError(f"Unsupported publication-gate operator: {operator}")
 
 
-def _parse_json_mapping(value: Any) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        return dict(value)
-    if not isinstance(value, str) or not value.strip():
-        return {}
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError as exc:
-        raise ConfigurationError("Release challenger model parameters are invalid JSON") from exc
-    if not isinstance(parsed, Mapping):
-        raise ConfigurationError("Release challenger model parameters must be a mapping")
-    return dict(parsed)
-
-
 def _annual_public_metrics(
     metrics: Mapping[str, Any],
     yearly: Mapping[str, Any],
@@ -860,7 +1100,6 @@ def _annual_public_metrics(
     summary: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
-        "trial_id": str(summary.get("trial_id")),
         "annualized_active_return": _finite(
             metrics.get("annualized_active_return"),
             "Annualized active return",
@@ -974,7 +1213,7 @@ def _plot_backtest(
         axis.set_axisbelow(True)
 
     fig.suptitle(
-        "图 1  冻结方案年度研究折净值与主动回撤",
+        "图 1  滚动年度组合净值与主动回撤",
         x=0.075,
         ha="left",
         fontsize=14,
@@ -986,7 +1225,7 @@ def _plot_backtest(
         0.910,
         (
             f"{_human_date(metrics.get('start_date'))}—{_human_date(metrics.get('end_date'))}｜"
-            "6 个滚动年度折｜已扣除模型化交易成本"
+            f"{len(evidence.yearly)} 个滚动年度折｜已扣除模型化交易成本"
         ),
         ha="left",
         color=_MUTED,
@@ -996,8 +1235,8 @@ def _plot_backtest(
         0.075,
         0.025,
         (
-            "注：每个年度折在评价开始前冻结训练样本，日收益按时间顺序拼接；"
-            "本区间属于研究样本，不是新的独立最终留出期。资料来源：Tushare Pro，本项目计算。"
+            "注：每个年度折仅使用当时可得数据训练，日收益按时间顺序拼接；"
+            "本区间属于滚动研究样本。资料来源：Tushare Pro，本项目计算。"
         ),
         ha="left",
         color=_MUTED,
@@ -1008,105 +1247,95 @@ def _plot_backtest(
 
 
 def _plot_factor_audit(pyplot: Any, evidence: _FactorEvidence, path: Path) -> None:
-    factors = evidence.factors.copy()
-    family = (
-        factors.groupby("family", as_index=False)
-        .agg(candidate_count=("factor", "size"), eligible_count=("eligible", "sum"))
-        .sort_values(["eligible_count", "candidate_count", "family"], ascending=[True, True, False])
-        .reset_index(drop=True)
-    )
-    family["label"] = family["family"].map(_FAMILY_LABELS).fillna(family["family"])
-    eligible = factors.loc[factors["eligible"].astype(bool), ["factor"]]
-    yearly = evidence.yearly.merge(
-        eligible,
+    statistics = _factor_spread_statistics(evidence)
+    factors = evidence.factors.loc[evidence.factors["eligible"].astype(bool)].merge(
+        statistics,
         on="factor",
-        how="inner",
-        validate="many_to_one",
+        how="left",
+        validate="one_to_one",
     )
-    yearly = (
-        yearly.groupby("year", as_index=False)
-        .agg(
-            median_net_spread=("mean_q5_minus_q1_net", "median"),
-            positive_count=("mean_q5_minus_q1_net", lambda values: int((values > 0).sum())),
-            factor_count=("factor", "size"),
-        )
-        .sort_values("year")
-    )
-    yearly["median_bps"] = yearly["median_net_spread"] * 10_000
+    factors = factors.sort_values("mean_directed_rank_ic").reset_index(drop=True)
+    factors["label"] = factors["factor"].map(_FACTOR_LABELS).fillna(factors["factor"])
+    positions = list(range(len(factors)))
+    median_ic = float(factors["mean_directed_rank_ic"].median())
+    median_sharpe = float(factors["net_spread_sharpe"].median())
+    median_drawdown = float(factors["net_spread_max_drawdown"].median())
 
-    fig, axes = pyplot.subplots(1, 2, figsize=(12, 6.2), gridspec_kw={"width_ratios": [1.0, 1.35]})
-    positions = list(range(len(family)))
-    axes[0].barh(
-        positions,
-        family["candidate_count"],
-        color=_BLUE_OPEN,
-        height=0.62,
-        label="候选",
+    fig, axes = pyplot.subplots(
+        1,
+        2,
+        figsize=(12, 7.2),
+        sharey=True,
+        gridspec_kw={"width_ratios": [1.0, 1.0]},
     )
-    axes[0].barh(
+    ic_bars = axes[0].barh(
         positions,
-        family["eligible_count"],
+        factors["mean_directed_rank_ic"],
         color=_BLUE,
-        height=0.62,
-        label="通过审计",
+        height=0.58,
     )
-    for position, candidate, eligible_count in zip(
-        positions,
-        family["candidate_count"],
-        family["eligible_count"],
-        strict=True,
-    ):
+    axes[0].axvline(median_ic, color=_MUTED, linewidth=1.0, linestyle="--")
+    axes[0].set_yticks(positions, factors["label"])
+    axes[0].set_xlabel("平均定向 Rank IC")
+    axes[0].set_title("截面排序能力")
+    axes[0].grid(axis="x", color=_GRID, linewidth=0.8)
+    axes[0].text(
+        0.98,
+        0.025,
+        f"虚线：中位数 {median_ic:.3f}",
+        transform=axes[0].transAxes,
+        ha="right",
+        va="bottom",
+        color=_MUTED,
+        fontsize=8.3,
+    )
+    for bar, value in zip(ic_bars, factors["mean_directed_rank_ic"], strict=True):
         axes[0].text(
-            float(candidate) + 0.12,
-            position,
-            f"{int(eligible_count)}/{int(candidate)}",
+            float(value) + 0.001,
+            bar.get_y() + bar.get_height() / 2,
+            f"{float(value):.3f}",
             va="center",
             color=_INK,
-            fontsize=8.5,
+            fontsize=7.6,
         )
-    axes[0].set_yticks(positions, family["label"])
-    axes[0].set_xlabel("因子数量")
-    axes[0].set_title("因子家族覆盖")
-    axes[0].legend(loc="lower right", frameon=False)
-    axes[0].set_xlim(0, float(family["candidate_count"].max()) + 1.3)
-    axes[0].grid(axis="x", color=_GRID, linewidth=0.8)
 
-    colors = [_BLUE if value >= 0 else _MUTED for value in yearly["median_bps"]]
-    year_positions = list(range(len(yearly)))
-    bars = axes[1].bar(year_positions, yearly["median_bps"], color=colors, width=0.64)
-    axes[1].axhline(0.0, color=_INK, linewidth=0.9)
-    axes[1].set_title("入选因子的年度净多空价差中位数")
-    axes[1].set_ylabel("基点 / 调仓")
-    axes[1].set_xticks(year_positions, yearly["year"].astype(str))
-    axes[1].grid(axis="y", color=_GRID, linewidth=0.8)
-    for bar, row in zip(bars, yearly.itertuples(index=False), strict=True):
-        value = float(row.median_bps)
-        axes[1].text(
-            bar.get_x() + bar.get_width() / 2,
-            value + 0.35 if value >= 0 else value - 0.35,
-            f"{value:.1f}",
-            ha="center",
-            va="bottom" if value >= 0 else "top",
-            color=_INK,
-            fontsize=8.3,
-        )
-    last = yearly.iloc[-1]
-    axes[1].annotate(
-        f"{int(last['positive_count'])}/{int(last['factor_count'])} 个因子为正",
-        xy=(len(yearly) - 1, float(last["median_bps"])),
-        xytext=(-62, 30),
-        textcoords="offset points",
-        arrowprops={"arrowstyle": "-", "color": _MUTED, "linewidth": 0.9},
-        color=_MUTED,
-        fontsize=8.5,
+    sharpe_bars = axes[1].barh(
+        positions,
+        factors["net_spread_sharpe"],
+        color=_GOLD,
+        height=0.58,
     )
+    axes[1].axvline(0.0, color=_INK, linewidth=0.8)
+    axes[1].axvline(median_sharpe, color=_MUTED, linewidth=1.0, linestyle="--")
+    axes[1].set_xlabel("费后 Q5−Q1 年化 Sharpe")
+    axes[1].set_title("分组收益质量")
+    axes[1].grid(axis="x", color=_GRID, linewidth=0.8)
+    axes[1].text(
+        0.98,
+        0.025,
+        f"虚线：中位数 {median_sharpe:.3f}",
+        transform=axes[1].transAxes,
+        ha="right",
+        va="bottom",
+        color=_MUTED,
+        fontsize=8.3,
+    )
+    for bar, value in zip(sharpe_bars, factors["net_spread_sharpe"], strict=True):
+        axes[1].text(
+            float(value) + 0.018,
+            bar.get_y() + bar.get_height() / 2,
+            f"{float(value):.3f}",
+            va="center",
+            color=_INK,
+            fontsize=7.6,
+        )
     for axis in axes:
         axis.spines[["top", "right"]].set_visible(False)
         axis.spines[["left", "bottom"]].set_color(_GRID)
         axis.set_axisbelow(True)
 
     fig.suptitle(
-        "图 2  因子池审计与年度衰减",
+        "图 2  入选因子的 Rank IC 与费后分组收益",
         x=0.07,
         ha="left",
         fontsize=14,
@@ -1115,8 +1344,11 @@ def _plot_factor_audit(pyplot: Any, evidence: _FactorEvidence, path: Path) -> No
     )
     fig.text(
         0.07,
-        0.900,
-        "2017—2025 年｜42 个候选、14 个通过审计｜覆盖率、时点一致性、IC 与扣费价差联合门槛",
+        0.915,
+        (
+            "2017—2025 年全样本诊断｜42 个候选、14 个通过审计｜"
+            f"5 日调仓，费后多空最大回撤中位数 {median_drawdown:.2%}"
+        ),
         ha="left",
         color=_MUTED,
         fontsize=9,
@@ -1125,14 +1357,14 @@ def _plot_factor_audit(pyplot: Any, evidence: _FactorEvidence, path: Path) -> No
         0.07,
         0.025,
         (
-            "注：右图为 14 个全样本审计入选因子的年度截面中位数；"
-            "该汇总用于诊断，不替代每个年度折内的重新筛选。资料来源：Tushare Pro，本项目计算。"
+            "注：定向 Rank IC 按因子审计方向统一符号；费后价差扣除双边线性成本与卖出印花税。"
+            "本图是全样本单因子诊断，不替代年度折内筛选。资料来源：Tushare Pro，本项目计算。"
         ),
         ha="left",
         color=_MUTED,
         fontsize=8.5,
     )
-    fig.subplots_adjust(left=0.13, right=0.97, top=0.82, bottom=0.15, wspace=0.28)
+    fig.subplots_adjust(left=0.18, right=0.97, top=0.84, bottom=0.13, wspace=0.18)
     _save_figure(fig, path, pyplot)
 
 
@@ -1327,7 +1559,7 @@ def _save_figure(figure: Any, path: Path, pyplot: Any) -> None:
             temporary,
             dpi=180,
             bbox_inches="tight",
-            metadata={"Software": "csi500-alpha v2 README report"},
+            metadata={"Software": "csi500-alpha v2.1 research report"},
         )
         os.replace(temporary, path)
     finally:
@@ -1364,6 +1596,27 @@ def _validate_yearly(frame: pd.DataFrame, label: str) -> None:
         values = pd.to_numeric(frame[column], errors="coerce")
         if values.isna().any() or (~values.map(math.isfinite)).any():
             raise ConfigurationError(f"{label} yearly metrics has invalid {column}")
+
+
+def _validate_signal_diagnostics(
+    signals: pd.DataFrame,
+    labels: pd.DataFrame,
+    label: str,
+) -> None:
+    keys = {"decision_date", "instrument", "fold_year"}
+    _require_columns(signals, keys | {"expected_return"}, f"{label} evaluation signals")
+    _require_columns(
+        labels,
+        keys | {"forward_active_return", "label_valid"},
+        f"{label} evaluation labels",
+    )
+    if signals.empty or labels.empty:
+        raise ConfigurationError(f"{label} signal diagnostics are empty")
+    ordered_keys = ["decision_date", "instrument", "fold_year"]
+    if signals[ordered_keys].astype(str).duplicated().any():
+        raise ConfigurationError(f"{label} evaluation signals contain duplicate rows")
+    if labels[ordered_keys].astype(str).duplicated().any():
+        raise ConfigurationError(f"{label} evaluation labels contain duplicate rows")
 
 
 def _require_columns(frame: pd.DataFrame, required: set[str], label: str) -> None:

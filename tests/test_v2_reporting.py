@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -30,19 +31,19 @@ def test_v2_readme_report_exports_fingerprinted_aggregate_evidence(tmp_path: Pat
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
     assert summary["scope"]["evaluation_role"] == "rolling_annual_research"
     assert summary["released_method"]["positive_active_years"] == 2
-    assert summary["release"]["version"] == "2.0.0"
+    assert summary["release"]["version"] == "2.1.0"
     assert summary["release"]["status"] == "research_release"
     gate_assessment = summary["release"]["publication_gate_assessment"]
     assert gate_assessment["passed"] is False
     assert gate_assessment["failed_rule_count"] == 1
-    signal_check = summary["release"]["candidate_signal_check"]
-    assert signal_check["portfolio_path_identical"] is True
-    assert signal_check["maximum_actual_candidate_share"] == 0.0
-    assert signal_check["active_allocation_years"] == 0
     assert summary["expanded_pool_ablation"]["promoted"] is False
     assert summary["factor_audit"]["candidate_count"] == 4
     assert summary["factor_audit"]["eligible_count"] == 2
     assert summary["factor_audit"]["eligible_correlation_component_count"] == 2
+    assert summary["factor_audit"]["distribution_summary"]["median_net_spread_sharpe"] > 0
+    assert summary["signal_diagnostics"]["rank_ic_dates"] > 0
+    assert summary["signal_diagnostics"]["gross_q5_minus_q1_sharpe"] > 0
+    assert math.isfinite(summary["released_method"]["portfolio_sharpe_rf0"])
     assert len(summary["annual_comparison"]) == 2
     manifest_text = result.manifest_path.read_text(encoding="utf-8")
     assert str(tmp_path) not in manifest_text
@@ -80,6 +81,32 @@ def test_v2_readme_report_rejects_tampered_annual_evidence(tmp_path: Path) -> No
         )
 
 
+@pytest.mark.parametrize("artifact", ["evaluation-signals", "rebalance-spreads"])
+def test_v2_readme_report_rejects_tampered_diagnostic_evidence(
+    tmp_path: Path,
+    artifact: str,
+) -> None:
+    baseline_root, expanded_root, selection_root, factor_root = _v2_report_fixture(tmp_path)
+    if artifact == "evaluation-signals":
+        path = selection_root / "aggregates" / "released" / "evaluation-signals.parquet"
+        frame = pd.read_parquet(path)
+        frame.loc[0, "expected_return"] = float(frame.loc[0, "expected_return"]) + 0.01
+    else:
+        path = factor_root / "rebalance-spreads.parquet"
+        frame = pd.read_parquet(path)
+        frame.loc[0, "q5_minus_q1_net"] = float(frame.loc[0, "q5_minus_q1_net"]) + 0.01
+    frame.to_parquet(path, index=False)
+
+    with pytest.raises(ConfigurationError, match="fingerprint does not match"):
+        build_v2_readme_report(
+            baseline_root=baseline_root,
+            expanded_root=expanded_root,
+            selection_root=selection_root,
+            factor_audit_root=factor_root,
+            output_root=tmp_path / "public",
+        )
+
+
 def test_repository_readme_matches_published_v2_evidence() -> None:
     repository = Path(__file__).resolve().parents[1]
     assets = repository / "docs" / "assets"
@@ -90,20 +117,28 @@ def test_repository_readme_matches_published_v2_evidence() -> None:
     manifest = json.loads(manifest_text)
     baseline = summary["released_method"]
     factor_audit = summary["factor_audit"]
-    latest_factor_year = factor_audit["yearly_rows"][-1]
+    factor_distribution = factor_audit["distribution_summary"]
+    signal = summary["signal_diagnostics"]
 
     expected_snippets = {
+        f"{baseline['portfolio_total_return']:.2%}",
+        f"{baseline['benchmark_total_return']:.2%}",
         f"{baseline['annualized_active_return']:.2%}",
         f"{baseline['relative_active_total_return']:.2%}",
         f"{baseline['information_ratio']:.3f}",
         f"{baseline['active_max_drawdown']:.2%}",
+        f"{baseline['portfolio_sharpe_rf0']:.3f}",
+        f"{baseline['portfolio_max_drawdown']:.2%}",
         f"{baseline['capm_alpha_annualized']:.2%}",
         f"{baseline['capm_beta']:.3f}",
         f"{baseline['positive_active_years']}/{baseline['year_count']}",
-        f"{factor_audit['mean_coverage']:.1%}",
-        f"{factor_audit['eligible_correlation_component_count']} 个连通分量",
-        (f"{latest_factor_year['positive_net_spread_count']}/{latest_factor_year['factor_count']}"),
-        f"{latest_factor_year['median_net_spread'] * 10_000:.2f} 个基点",
+        f"{factor_distribution['median_directed_rank_ic']:.4f}",
+        f"{factor_distribution['median_net_spread_sharpe']:.3f}",
+        f"{factor_distribution['median_net_spread_max_drawdown']:.2%}",
+        f"{signal['mean_daily_rank_ic']:.4f}",
+        f"{signal['gross_q5_minus_q1_mean'] * 10_000:.2f} 个基点",
+        f"{signal['gross_q5_minus_q1_sharpe']:.3f}",
+        f"{signal['gross_q5_minus_q1_max_drawdown']:.2%}",
     }
     assert all(snippet in readme for snippet in expected_snippets)
     for name, expected in manifest["outputs"].items():
@@ -122,10 +157,25 @@ def _v2_report_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     dates = pd.DatetimeIndex(
         [*pd.bdate_range("2020-01-02", periods=24), *pd.bdate_range("2021-01-04", periods=24)]
     )
-    benchmark_returns = pd.Series([0.0, *([0.001] * (len(dates) - 1))])
+    benchmark_pattern = [0.0010, -0.0007, 0.0018, 0.0002, -0.0011, 0.0014]
+    active_pattern = [0.0003, -0.0001, 0.0002, 0.0004, -0.0002, 0.0001]
+    expanded_pattern = [0.0002, 0.0001, 0.0004, -0.0001, 0.0003, -0.0002]
+    benchmark_returns = pd.Series(
+        [
+            0.0,
+            *[
+                benchmark_pattern[index % len(benchmark_pattern)]
+                for index in range(len(dates) - 1)
+            ],
+        ]
+    )
     benchmark_nav = (1.0 + benchmark_returns).cumprod()
-    baseline_returns = benchmark_returns + pd.Series([0.0, *([0.0001] * (len(dates) - 1))])
-    expanded_returns = benchmark_returns + pd.Series([0.0, *([0.00012] * (len(dates) - 1))])
+    baseline_returns = benchmark_returns + pd.Series(
+        [0.0, *[active_pattern[index % len(active_pattern)] for index in range(len(dates) - 1)]]
+    )
+    expanded_returns = benchmark_returns + pd.Series(
+        [0.0, *[expanded_pattern[index % len(expanded_pattern)] for index in range(len(dates) - 1)]]
+    )
     baseline_nav = (1.0 + baseline_returns).cumprod()
     expanded_nav = (1.0 + expanded_returns).cumprod()
     baseline_daily = pd.DataFrame(
@@ -182,6 +232,30 @@ def _v2_report_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     selection_root = tmp_path / "release-selection"
     released_root = selection_root / "aggregates" / "released"
     challenger_root = selection_root / "aggregates" / "challenger"
+    signal_dates = dates[::4]
+    signal_rows: list[dict[str, object]] = []
+    label_rows: list[dict[str, object]] = []
+    spread_multipliers = [1.0, 0.7, 1.3, -0.2, 0.9, 1.1, 0.5, 1.4, 0.8, -0.1, 1.2, 0.6]
+    for date_index, decision_date in enumerate(signal_dates):
+        multiplier = spread_multipliers[date_index]
+        for instrument_index in range(10):
+            expected_return = (instrument_index - 4.5) * 0.001
+            instrument = f"{instrument_index:06d}.SZ"
+            key = {
+                "decision_date": decision_date.strftime("%Y%m%d"),
+                "instrument": instrument,
+                "fold_year": int(decision_date.year),
+            }
+            signal_rows.append({**key, "expected_return": expected_return})
+            label_rows.append(
+                {
+                    **key,
+                    "forward_active_return": expected_return * multiplier,
+                    "label_valid": True,
+                }
+            )
+    evaluation_signals = pd.DataFrame(signal_rows)
+    evaluation_labels = pd.DataFrame(label_rows)
     _write_annual_aggregate(
         released_root,
         annual_id="fixture-release-annual",
@@ -191,6 +265,8 @@ def _v2_report_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         annualized_active_return=0.025,
         information_ratio=0.5,
         positive_years=2,
+        evaluation_signals=evaluation_signals,
+        evaluation_labels=evaluation_labels,
     )
     challenger_fits = pd.DataFrame(
         {
@@ -327,6 +403,20 @@ def _v2_report_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         }
     ).to_parquet(correlation_path, index=False)
     yearly_factor.to_parquet(yearly_factor_path, index=False)
+    spread_rows: list[dict[str, object]] = []
+    factor_bases = {"value_a": 0.0010, "value_b": -0.0002, "risk_a": 0.0014, "size_a": -0.0004}
+    spread_pattern = [1.0, 0.6, 1.4, -0.3, 0.9, 1.2, 0.4, 1.5, 0.7, -0.1, 1.1, 0.5]
+    for date_index, decision_date in enumerate(signal_dates):
+        for factor, base in factor_bases.items():
+            spread_rows.append(
+                {
+                    "decision_date": decision_date.strftime("%Y%m%d"),
+                    "factor": factor,
+                    "q5_minus_q1_net": base * spread_pattern[date_index],
+                }
+            )
+    rebalance_spreads_path = factor_root / "rebalance-spreads.parquet"
+    pd.DataFrame(spread_rows).to_parquet(rebalance_spreads_path, index=False)
     factor_summary = {
         "status": "success",
         "audit_id": "fixture-audit",
@@ -350,6 +440,7 @@ def _v2_report_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
                 "factor_audit_summary": sha256_file(factor_summary_json),
                 "factor_correlation": sha256_file(correlation_path),
                 "factor_summary": sha256_file(factor_summary_path),
+                "rebalance_spreads": sha256_file(rebalance_spreads_path),
                 "yearly_audit": sha256_file(yearly_factor_path),
             },
         },
@@ -368,6 +459,8 @@ def _write_annual_aggregate(
     information_ratio: float,
     positive_years: int,
     model_fits: pd.DataFrame | None = None,
+    evaluation_signals: pd.DataFrame | None = None,
+    evaluation_labels: pd.DataFrame | None = None,
 ) -> None:
     root.mkdir(parents=True)
     daily_path = root / "daily.parquet"
@@ -383,6 +476,16 @@ def _write_annual_aggregate(
         model_fits_path = root / "model-fits.parquet"
         model_fits.to_parquet(model_fits_path, index=False)
         artifact_fingerprints["model-fits.parquet"] = sha256_file(model_fits_path)
+    calibration: dict[str, object] | None = None
+    if evaluation_signals is not None or evaluation_labels is not None:
+        assert evaluation_signals is not None and evaluation_labels is not None
+        signals_path = root / "evaluation-signals.parquet"
+        labels_path = root / "evaluation-labels.parquet"
+        evaluation_signals.to_parquet(signals_path, index=False)
+        evaluation_labels.to_parquet(labels_path, index=False)
+        artifact_fingerprints["evaluation-signals.parquet"] = sha256_file(signals_path)
+        artifact_fingerprints["evaluation-labels.parquet"] = sha256_file(labels_path)
+        calibration = _fixture_calibration(evaluation_signals, evaluation_labels)
     summary = {
         "trial_id": trial_id,
         "fold_count": 2,
@@ -402,6 +505,7 @@ def _write_annual_aggregate(
             "transaction_cost": 0.01,
         },
         "evaluation": {
+            **({"calibration": calibration} if calibration is not None else {}),
             "yearly": {
                 "positive_active_years": positive_years,
                 "year_count": 2,
@@ -428,6 +532,46 @@ def _write_annual_aggregate(
             },
         },
     )
+
+
+def _fixture_calibration(signals: pd.DataFrame, labels: pd.DataFrame) -> dict[str, object]:
+    sample = signals.merge(
+        labels,
+        on=["decision_date", "instrument", "fold_year"],
+        validate="one_to_one",
+    )
+    sample = sample.loc[sample["label_valid"].eq(True)].copy()
+    rank_ics: list[float] = []
+    spreads: list[float] = []
+    bin_means: dict[int, list[float]] = {index: [] for index in range(1, 6)}
+    for _, group in sample.groupby("decision_date", sort=True):
+        rank_ics.append(
+            float(group["expected_return"].corr(group["forward_active_return"], method="spearman"))
+        )
+        percentile = group["expected_return"].rank(method="first", pct=True)
+        quintile = (percentile * 5.0).apply(math.ceil).clip(1, 5).astype(int)
+        realized = group.assign(_quintile=quintile).groupby("_quintile")[
+            "forward_active_return"
+        ].mean()
+        spreads.append(float(realized.loc[5] - realized.loc[1]))
+        for bin_number, value in realized.items():
+            bin_means[int(bin_number)].append(float(value))
+    aggregate_bins = pd.Series(
+        {bin_number: float(pd.Series(values).mean()) for bin_number, values in bin_means.items()}
+    )
+    monotonicity = pd.Series(aggregate_bins.index, dtype=float).corr(
+        pd.Series(aggregate_bins.to_numpy(dtype=float)),
+        method="spearman",
+    )
+    return {
+        "mean_daily_rank_ic": float(pd.Series(rank_ics).mean()),
+        "rank_ic_dates": len(rank_ics),
+        "top_minus_bottom_realized_return": float(pd.Series(spreads).mean()),
+        "quintile_monotonicity": float(monotonicity),
+        "directional_hit_rate": float(
+            (sample["expected_return"].mul(sample["forward_active_return"]) > 0).mean()
+        ),
+    }
 
 
 def _write_json(path: Path, value: object) -> None:

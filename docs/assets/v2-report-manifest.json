@@ -7,20 +7,19 @@
         "benchmark_nav",
         "active_nav"
       ],
-      "question": "冻结方案在 2020—2025 年滚动年度研究折中的净值与主动回撤如何？",
-      "takeaway": "六个研究年度折累计主动收益为 9.76%，五个年度为正；该区间不是新的独立最终留出样本。",
-      "type": "three-panel line and drawdown chart"
+      "question": "组合在 2020—2025 年滚动年度研究折中的净值与主动回撤如何？",
+      "takeaway": "六个研究年度折累计主动收益为 9.76%，五个年度为正；组合最大回撤为 35.67%。",
+      "type": "三面板净值与回撤折线图"
     },
     "v2-factor-audit.png": {
       "fields": [
-        "family",
-        "eligible",
-        "year",
-        "mean_q5_minus_q1_net"
+        "factor",
+        "mean_directed_rank_ic",
+        "q5_minus_q1_net"
       ],
-      "question": "42 个候选因子的正式审计如何收缩因子池，证据是否随时间衰减？",
-      "takeaway": "14 个因子通过跨年覆盖率、IC 与净多空价差门槛；2025 年仅 7 个保持正净价差。",
-      "type": "family count bars and yearly evidence bars"
+      "question": "通过审计的单因子，其截面 IC 与费后分组收益是否一致？",
+      "takeaway": "单因子平均定向 Rank IC 的中位数为 0.021，费后多空 Sharpe 中位数为 0.631。",
+      "type": "双栏横向条形图"
     },
     "v2-freeze-rationale.png": {
       "fields": [
@@ -30,17 +29,17 @@
       ],
       "question": "备选因子扩展是否带来稳定的年度增量？",
       "takeaway": "扩池提高全期汇总收益，但年度增量中位数为负，正主动收益年份由五个降至四个。",
-      "type": "paired annual bar charts"
+      "type": "年度对照柱状图"
     }
   },
   "outputs": {
-    "v2-backtest-overview.png": "a1a6fbfd603cd70ec41abfeecfa58f61bb06f45b6c235b82e63b8a6553e297de",
-    "v2-factor-audit.png": "4abbfb0ae447bdd92846f4b94ada880488f422eece123d5756ec6171a2c9446a",
-    "v2-freeze-rationale.png": "3830d70248b1995c2b79969d14daeb448896a4d580daf61e22534dfee463bcbf",
-    "v2-public-summary.json": "4afed54c2fce1f8ea6b7f4460fcd9c330c99fa51f9161af9e64074cb5d6f87b0"
+    "v2-backtest-overview.png": "552adc15bd53c9815b9a09ef3af5b9942a40ef14a0004fd92522b4ab3761b3ef",
+    "v2-factor-audit.png": "02579589c93bdb888d66cd7a6ed2c0c26131fe42fd304fd47a2e94b5f1707b17",
+    "v2-freeze-rationale.png": "ed2be9881e83973863d4bba96e01701e623ba57673ccc0dd884b535aa1133c69",
+    "v2-public-summary.json": "126d69116291c85cf0b82d30af96566e8da53cbb14d3c97b310f7fb0fb89086f"
   },
-  "public_boundary": "Aggregate metrics and raster figures only. Holdings, trades, signals, vendor rows, credentials and local paths are excluded.",
-  "schema_version": 2,
+  "public_boundary": "仅包含聚合指标和栅格图片；不包含持仓、成交、逐行信号、供应商原始数据、凭证或本地路径。",
+  "schema_version": 3,
   "source_artifacts": {
     "comparison-baseline/aggregate-manifest.json": "5d7ae5734ae6a796a9890cedaf18f6cf3eba40c6da619fb034ac48812ca1213c",
     "comparison-baseline/aggregate-summary.json": "d02e4725a9aff497b3f1b65f841672293daf3fced5ca81c933bf189f01af38a6",
@@ -53,6 +52,7 @@
     "factor-audit/factor-audit-summary.json": "5c9a8027187368b1efa8a1c9850660587c74276ec7a6b1957a18465e626c1276",
     "factor-audit/factor-correlation.parquet": "36280dec3d3c4fdbb56298e94332a6790cf1dc84c90434825bff30d7dfa09b12",
     "factor-audit/factor-summary.parquet": "ea3a2965486ac9a03eadffe437559fe7c776542039c398f9b48dd5aa2ce68985",
+    "factor-audit/rebalance-spreads.parquet": "11d44025a819926f2adb36cdcb27eaadbee318bc7b054c30b271faff7432b45f",
     "factor-audit/yearly-audit.parquet": "d2461016e6ac0a8160f0c86e9b6938910156aa775c198ae14c32543cc844cc0e",
     "selection/annual-study-manifest.json": "402ae25580a4717ee86a973e67d1d1440f71b2216b407eb97159aa709f60af00",
     "selection/challenger/aggregate-manifest.json": "58f2592d8040f7fe1c65de02e58c102ab07cd0dbe72ab86ccaa641a7a0bbab13",
@@ -62,17 +62,15 @@
     "selection/released/aggregate-manifest.json": "518010e20daa3f67ed7b65215c05bdf42f696e06b8e50470cf7978caca34fb26",
     "selection/released/aggregate-summary.json": "2f1cbf178253039b5e960f088c0385bb3b3d145abd4471695d984b8192b04fa1",
     "selection/released/daily.parquet": "f8cc674e395d41b5d7ebabfbda572f9a8c12589da0cc9da41ac85cd0412ff8a4",
+    "selection/released/evaluation-labels.parquet": "d762b1a139ad4b8b168ea21621e8394aed8533d81dd7e009c256b445ac1f1bc9",
+    "selection/released/evaluation-signals.parquet": "a8c606706019b50c37b78908f24ab664714d4a0c82cbddc43e368af7b3d80cf4",
     "selection/released/yearly-metrics.parquet": "05b5136102be09dffa2de782d4368d0fd3d8bdcf8df8948bb3dc96f00c26512e",
     "selection/selection.json": "337404609bb082edec9647efa8f9d920c073be5fb43a111dc486d6e42e35c9df"
   },
-  "source_ids": {
-    "challenger_trial_id": "a32_turnover_budgeted_residual",
-    "comparison_annual_id": "a2-factor-expansion-v1-annual-2020-2025",
-    "comparison_baseline_trial_id": "a0_frozen_pool",
-    "expanded_trial_id": "a2_discovery_pool",
-    "factor_audit_id": "csi500-factor-audit-v2",
-    "factor_audit_run_id": "20260827T134438910394Z-csi500-factor-audit-v2-99b3c361",
-    "release_annual_id": "a32-turnover-budgeted-residual-v1-canonical-annual-2020-2025",
-    "released_trial_id": "a0_frozen_reference"
+  "source_scope": {
+    "expanded_candidate_count": 48,
+    "factor_audit": "2017-2025",
+    "released_candidate_count": 42,
+    "rolling_evaluation": "2020-2025"
   }
 }

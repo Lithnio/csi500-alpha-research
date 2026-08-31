@@ -38,15 +38,18 @@
     }
   ],
   "evidence_boundary": [
-    "The 2020-2025 results are rolling annual research folds, not a new independent holdout.",
-    "The factor audit is aggregate diagnostic evidence and does not replace fold-internal selection.",
-    "The 2026 H1 holdout is a revealed diagnostic for the prior method, not an independent holdout for v2.",
-    "Costs and capacity are modeled; the results are not live trading evidence."
+    "2020—2025 年结果来自滚动年度研究折，不是新的独立最终留出样本。",
+    "单因子指标是 2017—2025 年全样本诊断，不替代各年度折内部的重新筛选。",
+    "合成信号分组收益未扣交易成本；组合收益已扣模型化交易成本。",
+    "成本与容量均为模型估计，结果不代表实盘业绩。"
   ],
   "expanded_pool_ablation": {
     "active_max_drawdown": -0.0695172604439358,
     "annualized_active_return": 0.01843513085155446,
     "average_turnover": 0.028829105785178052,
+    "benchmark_max_drawdown": -0.35914318903771514,
+    "benchmark_sharpe_rf0": 0.516085700360885,
+    "benchmark_total_return": 0.6522157257025962,
     "capm_alpha_annualized": 0.022613830911779546,
     "capm_beta": 0.9486069182646785,
     "delta_annualized_active_return": 0.0020011025291439832,
@@ -57,18 +60,29 @@
     "minimum_active_total_return": -0.00977378389683392,
     "notional_fill_ratio": 0.9968970274516152,
     "optimizer_solve_rate": 0.9896193771626297,
+    "portfolio_max_drawdown": -0.3109725056684952,
+    "portfolio_sharpe_rf0": 0.6128908764755219,
+    "portfolio_total_return": 0.833871170924052,
     "positive_active_years": 4,
     "promoted": false,
     "relative_active_total_return": 0.10994656593297325,
     "tracking_error": 0.04501533846962095,
     "transaction_cost": 0.04855519649117135,
-    "trial_id": "a2_discovery_pool",
     "year_count": 6
   },
   "factor_audit": {
     "candidate_count": 42,
     "correlation_threshold": 0.75,
     "decision_dates": 438,
+    "distribution_summary": {
+      "maximum_directed_rank_ic": 0.04575530352932809,
+      "maximum_net_spread_sharpe": 0.8306115824896613,
+      "median_directed_rank_ic": 0.02089517711544328,
+      "median_net_spread_max_drawdown": -0.18631959915031981,
+      "median_net_spread_sharpe": 0.6306521515113961,
+      "minimum_directed_rank_ic": 0.007469194905120721,
+      "minimum_net_spread_sharpe": 0.1421977437902165
+    },
     "eligible_correlation_component_count": 12,
     "eligible_count": 14,
     "eligible_factors": [
@@ -77,98 +91,168 @@
         "family": "accrual",
         "mean_coverage": 0.884027397260274,
         "mean_directed_rank_ic": 0.007469194905120721,
-        "median_yearly_net_spread": 0.0004815810500508399
+        "mean_net_spread": 0.0008824442627962611,
+        "median_yearly_net_spread": 0.0004815810500508399,
+        "net_spread_max_drawdown": -0.1891690575218009,
+        "net_spread_observations": 399,
+        "net_spread_sharpe": 0.6794827604175315,
+        "positive_net_spread_fraction": 0.5639097744360902
       },
       {
         "factor": "roe_change_yoy",
         "family": "growth",
         "mean_coverage": 0.8848721461187214,
         "mean_directed_rank_ic": 0.011125833665175236,
-        "median_yearly_net_spread": 0.0008327809625583051
+        "mean_net_spread": 0.0006581702200887606,
+        "median_yearly_net_spread": 0.0008327809625583051,
+        "net_spread_max_drawdown": -0.20653698387920638,
+        "net_spread_observations": 387,
+        "net_spread_sharpe": 0.536106799692208,
+        "positive_net_spread_fraction": 0.5400516795865633
       },
       {
         "factor": "amihud_20",
         "family": "liquidity",
         "mean_coverage": 0.9772557077625571,
         "mean_directed_rank_ic": 0.022082840753172548,
-        "median_yearly_net_spread": 0.0010492089939366316
+        "mean_net_spread": 0.0011158012286863973,
+        "median_yearly_net_spread": 0.0010492089939366316,
+        "net_spread_max_drawdown": -0.16588300449167437,
+        "net_spread_observations": 436,
+        "net_spread_sharpe": 0.6592334212119276,
+        "positive_net_spread_fraction": 0.5252293577981652
       },
       {
         "factor": "free_turnover_20",
         "family": "liquidity",
         "mean_coverage": 0.9915799086757991,
         "mean_directed_rank_ic": 0.04354650066119338,
-        "median_yearly_net_spread": 0.000871943232636297
+        "mean_net_spread": 0.0005610128684425317,
+        "median_yearly_net_spread": 0.000871943232636297,
+        "net_spread_max_drawdown": -0.2233163351222187,
+        "net_spread_observations": 436,
+        "net_spread_sharpe": 0.2421877893640141,
+        "positive_net_spread_fraction": 0.5
       },
       {
         "factor": "momentum_250_20",
         "family": "momentum",
         "mean_coverage": 0.9883744292237443,
         "mean_directed_rank_ic": 0.017606879951778086,
-        "median_yearly_net_spread": 0.0013222530154448013
+        "mean_net_spread": 0.0018452603316121959,
+        "median_yearly_net_spread": 0.0013222530154448013,
+        "net_spread_max_drawdown": -0.14177805236120478,
+        "net_spread_observations": 434,
+        "net_spread_sharpe": 0.8060135574267066,
+        "positive_net_spread_fraction": 0.5622119815668203
       },
       {
         "factor": "cash_return_on_assets_ttm",
         "family": "quality",
         "mean_coverage": 0.8840730593607306,
         "mean_directed_rank_ic": 0.014162561107946415,
-        "median_yearly_net_spread": 0.001292320666494004
+        "mean_net_spread": 0.0009549159118730213,
+        "median_yearly_net_spread": 0.001292320666494004,
+        "net_spread_max_drawdown": -0.18955200257641847,
+        "net_spread_observations": 399,
+        "net_spread_sharpe": 0.6020708818108644,
+        "positive_net_spread_fraction": 0.556390977443609
       },
       {
         "factor": "gross_profitability_ttm",
         "family": "quality",
         "mean_coverage": 0.8820593607305935,
         "mean_directed_rank_ic": 0.00825248394596528,
-        "median_yearly_net_spread": 0.0006111385722106801
+        "mean_net_spread": 0.0006232935482622366,
+        "median_yearly_net_spread": 0.0006111385722106801,
+        "net_spread_max_drawdown": -0.23701708075201466,
+        "net_spread_observations": 399,
+        "net_spread_sharpe": 0.3591970589215202,
+        "positive_net_spread_fraction": 0.5413533834586466
       },
       {
         "factor": "low_downside_vol_60",
         "family": "risk",
         "mean_coverage": 0.9999041095890412,
         "mean_directed_rank_ic": 0.033950331026141055,
-        "median_yearly_net_spread": 0.0008191203762510598
+        "mean_net_spread": 0.0006009329495553589,
+        "median_yearly_net_spread": 0.0008191203762510598,
+        "net_spread_max_drawdown": -0.22925616872161847,
+        "net_spread_observations": 436,
+        "net_spread_sharpe": 0.23478377085380878,
+        "positive_net_spread_fraction": 0.5275229357798165
       },
       {
         "factor": "low_idio_vol_60",
         "family": "risk",
         "mean_coverage": 0.9999041095890412,
         "mean_directed_rank_ic": 0.045423428140318925,
-        "median_yearly_net_spread": 0.0009919194397797935
+        "mean_net_spread": 0.0014879636982583807,
+        "median_yearly_net_spread": 0.0009919194397797935,
+        "net_spread_max_drawdown": -0.18347014077883872,
+        "net_spread_observations": 436,
+        "net_spread_sharpe": 0.6813157360926292,
+        "positive_net_spread_fraction": 0.5481651376146789
       },
       {
         "factor": "low_range_vol_20",
         "family": "risk",
         "mean_coverage": 0.9999771689497717,
         "mean_directed_rank_ic": 0.04575530352932809,
-        "median_yearly_net_spread": 0.0005418648990555398
+        "mean_net_spread": 0.00034683153485850745,
+        "median_yearly_net_spread": 0.0005418648990555398,
+        "net_spread_max_drawdown": -0.21863576139747598,
+        "net_spread_observations": 436,
+        "net_spread_sharpe": 0.1421977437902165,
+        "positive_net_spread_fraction": 0.5045871559633027
       },
       {
         "factor": "book_to_market",
         "family": "value",
         "mean_coverage": 0.9282648401826483,
         "mean_directed_rank_ic": 0.021545269237243116,
-        "median_yearly_net_spread": 0.001264046541724363
+        "mean_net_spread": 0.0009243679404646765,
+        "median_yearly_net_spread": 0.001264046541724363,
+        "net_spread_max_drawdown": -0.17873674064506528,
+        "net_spread_observations": 399,
+        "net_spread_sharpe": 0.465423782652059,
+        "positive_net_spread_fraction": 0.5037593984962406
       },
       {
         "factor": "cfo_yield_ttm",
         "family": "value",
         "mean_coverage": 0.885538812785388,
         "mean_directed_rank_ic": 0.020245084993643445,
-        "median_yearly_net_spread": 0.0019170828472924325
+        "mean_net_spread": 0.0013159929920965176,
+        "median_yearly_net_spread": 0.0019170828472924325,
+        "net_spread_max_drawdown": -0.1815935153737357,
+        "net_spread_observations": 399,
+        "net_spread_sharpe": 0.8306115824896613,
+        "positive_net_spread_fraction": 0.5338345864661654
       },
       {
         "factor": "earnings_yield_ttm",
         "family": "value",
         "mean_coverage": 0.9279269406392694,
         "mean_directed_rank_ic": 0.027633453625348296,
-        "median_yearly_net_spread": 0.0010372395421550508
+        "mean_net_spread": 0.0013758776864227068,
+        "median_yearly_net_spread": 0.0010372395421550508,
+        "net_spread_max_drawdown": -0.13106805850781178,
+        "net_spread_observations": 399,
+        "net_spread_sharpe": 0.7964402069134782,
+        "positive_net_spread_fraction": 0.5614035087719298
       },
       {
         "factor": "sales_to_price_ttm",
         "family": "value",
         "mean_coverage": 0.8854337899543379,
         "mean_directed_rank_ic": 0.01462131094313712,
-        "median_yearly_net_spread": 0.0012752211720248087
+        "mean_net_spread": 0.0010708888201902316,
+        "median_yearly_net_spread": 0.0012752211720248087,
+        "net_spread_max_drawdown": -0.11039522301339255,
+        "net_spread_observations": 399,
+        "net_spread_sharpe": 0.6819489716901359,
+        "positive_net_spread_fraction": 0.5363408521303258
       }
     ],
     "end_date": "20251231",
@@ -302,63 +386,6 @@
     ]
   },
   "release": {
-    "candidate_signal_check": {
-      "active_allocation_years": 0,
-      "fold_rows": [
-        {
-          "final_oof_t": -0.9759242799141659,
-          "fit_count": 1,
-          "maximum_candidate_share": 0.0,
-          "oof_evidence_passed": false,
-          "status": "evaluated",
-          "year": 2020
-        },
-        {
-          "final_oof_t": -1.9238190646576423,
-          "fit_count": 1,
-          "maximum_candidate_share": 0.0,
-          "oof_evidence_passed": false,
-          "status": "evaluated",
-          "year": 2021
-        },
-        {
-          "final_oof_t": 1.434472751631574,
-          "fit_count": 1,
-          "maximum_candidate_share": 0.0,
-          "oof_evidence_passed": false,
-          "status": "evaluated",
-          "year": 2022
-        },
-        {
-          "final_oof_t": null,
-          "fit_count": 49,
-          "maximum_candidate_share": 0.0,
-          "oof_evidence_passed": false,
-          "status": "no_selected_factors",
-          "year": 2023
-        },
-        {
-          "final_oof_t": -1.1648200195658276,
-          "fit_count": 1,
-          "maximum_candidate_share": 0.0,
-          "oof_evidence_passed": false,
-          "status": "evaluated",
-          "year": 2024
-        },
-        {
-          "final_oof_t": -0.5256454977238755,
-          "fit_count": 1,
-          "maximum_candidate_share": 0.0,
-          "oof_evidence_passed": false,
-          "status": "evaluated",
-          "year": 2025
-        }
-      ],
-      "maximum_actual_candidate_share": 0.0,
-      "portfolio_path_identical": true,
-      "promoted": false,
-      "year_count": 6
-    },
     "publication_gate_assessment": {
       "failed_rule_count": 4,
       "failed_rules": [
@@ -396,12 +423,15 @@
       "rule_count": 12
     },
     "status": "research_release",
-    "version": "2.0.0"
+    "version": "2.1.0"
   },
   "released_method": {
     "active_max_drawdown": -0.06635461931777875,
     "annualized_active_return": 0.016434028322410477,
     "average_turnover": 0.0222113432674698,
+    "benchmark_max_drawdown": -0.35914318903771514,
+    "benchmark_sharpe_rf0": 0.516085700360885,
+    "benchmark_total_return": 0.6522157257025962,
     "capm_alpha_annualized": 0.020153530496405385,
     "capm_beta": 0.955885005860004,
     "execution_cost_bps": 11.046471746278081,
@@ -409,15 +439,22 @@
     "minimum_active_total_return": -0.0034169610692526,
     "notional_fill_ratio": 0.9974005175423625,
     "optimizer_solve_rate": 0.9896193771626297,
+    "portfolio_max_drawdown": -0.3566558863331627,
+    "portfolio_sharpe_rf0": 0.6006871198217486,
+    "portfolio_total_return": 0.8133899643336278,
     "positive_active_years": 5,
     "relative_active_total_return": 0.09755035987355276,
     "tracking_error": 0.04450657297506456,
     "transaction_cost": 0.03605940209516004,
-    "trial_id": "a0_frozen_reference",
     "year_count": 6
   },
-  "schema_version": 2,
+  "schema_version": 3,
   "scope": {
+    "annualization_assumptions": {
+      "absolute_sharpe_risk_free_rate": 0.0,
+      "factor_and_signal_horizon_days": 5,
+      "trading_days": 252
+    },
     "benchmark": "CSI 500 total-return proxy",
     "costs_included": true,
     "end_date": "20251231",
@@ -431,5 +468,17 @@
       2025
     ],
     "start_date": "20200108"
+  },
+  "signal_diagnostics": {
+    "directional_hit_rate": 0.5072328049598637,
+    "gross_q5_minus_q1_max_drawdown": -0.098230634103882,
+    "gross_q5_minus_q1_mean": 0.0009868186029861963,
+    "gross_q5_minus_q1_sharpe": 0.4983957964619836,
+    "mean_daily_rank_ic": 0.03454300118283766,
+    "positive_gross_spread_fraction": 0.5211864406779662,
+    "quintile_monotonicity": 0.7,
+    "rank_ic_dates": 236,
+    "realized_observations": 117724,
+    "spread_cost_treatment": "gross_before_transaction_costs"
   }
 }
