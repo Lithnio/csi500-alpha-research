@@ -72,6 +72,35 @@ def test_repository_study_plan_and_trial_overrides_are_bounded() -> None:
         resolve_trial_config(base, study_id=spec.study_id, trial=invalid)
 
 
+def test_factor_family_v2_study_resolves_three_capped_models() -> None:
+    root = Path(__file__).resolve().parents[1]
+    study_path = root / "configs" / "studies" / "factor_family_v2.yaml"
+    spec = StudySpec.from_yaml(study_path)
+    base = AppConfig.from_yaml(spec.base_config_path)
+
+    resolved = [
+        resolve_trial_config(base, study_id=spec.study_id, trial=trial)
+        for trial in spec.trials
+    ]
+
+    assert [config.workflow.model.name for config in resolved] == [
+        "family_direction_equal",
+        "family_ridge",
+        "family_robust_ic",
+    ]
+    assert all(
+        config.workflow.feature_provider.name == "builtin_daily_fundamental"
+        for config in resolved
+    )
+    assert all(
+        config.workflow.selector.params["max_per_cluster"] == 1
+        and config.workflow.selector.params["max_bh_q_value"] == 0.20
+        and config.workflow.model.params["max_factor_weight"] == 0.20
+        and config.workflow.model.params["max_family_weight"] == 0.35
+        for config in resolved
+    )
+
+
 def test_study_runner_records_failure_resumes_and_reselects(tmp_path: Path) -> None:
     spec = _study_spec(tmp_path)
     context = _context()

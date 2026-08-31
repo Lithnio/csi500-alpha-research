@@ -9,7 +9,21 @@ from sklearn.linear_model import Ridge
 
 from csi500_alpha.errors import ConfigurationError, InsufficientTrainingData
 from csi500_alpha.features.builder import build_raw_factor_panel
-from csi500_alpha.features.catalog import DIRECTIONS, FACTOR_NAMES, FAMILIES
+from csi500_alpha.features.catalog import (
+    A3_ALL_DAILY_DIRECTIONS,
+    A3_ALL_DAILY_FACTOR_NAMES,
+    A3_ALL_DAILY_FAMILIES,
+    ALL_DAILY_DIRECTIONS,
+    ALL_DAILY_FACTOR_NAMES,
+    DIRECTIONS,
+    FACTOR_NAMES,
+)
+from csi500_alpha.features.fundamental import (
+    FUNDAMENTAL_DIRECTIONS,
+    FUNDAMENTAL_FACTOR_NAMES,
+    FUNDAMENTAL_FAMILIES,
+    build_fundamental_factor_panel,
+)
 from csi500_alpha.workflow.calibration import (
     RobustCrossSectionCalibrator,
     RollingRidgeCalibrator,
@@ -23,9 +37,22 @@ from csi500_alpha.workflow.contracts import (
     ReturnCalibrator,
     SelectionResult,
 )
+from csi500_alpha.workflow.family_models import (
+    FamilyAlphaModel,
+    FamilyMethod,
+    FamilyModelSettings,
+)
 from csi500_alpha.workflow.ic_shrinkage import (
     ICShrinkageAlphaModel,
     ICShrinkageSettings,
+)
+from csi500_alpha.workflow.incremental_selection import (
+    IncrementalAdmissionSettings,
+    IncrementalStabilityCostSelector,
+)
+from csi500_alpha.workflow.residual_sleeve import (
+    ResidualSleeveBlendAlphaModel,
+    ResidualSleeveSettings,
 )
 from csi500_alpha.workflow.selection import (
     StabilityCostSelector,
@@ -54,8 +81,178 @@ class BuiltinDailyFactorProvider:
             end_date=context.end_date,
             rebalance_every=context.rebalance_every,
             industry_membership=context.industry_membership,
+            benchmark_membership_intervals=context.benchmark_membership_intervals,
             industry_transition_date=context.industry_transition_date,
+            progress_callback=context.progress_callback,
         )
+
+
+class BuiltinDailyFundamentalFactorProvider:
+    name = "builtin_daily_fundamental"
+    factor_names = (*FACTOR_NAMES, *FUNDAMENTAL_FACTOR_NAMES)
+    directions: Mapping[str, int] = {**DIRECTIONS, **FUNDAMENTAL_DIRECTIONS}
+
+    def __init__(self, *, max_financial_age_days: int) -> None:
+        if max_financial_age_days < 1:
+            raise ConfigurationError("max_financial_age_days must be positive")
+        self.max_financial_age_days = max_financial_age_days
+
+    def build_raw(self, context: FeatureBuildContext) -> pd.DataFrame:
+        daily = build_raw_factor_panel(
+            market_panel=context.market_panel,
+            index_bars=context.index_bars,
+            daily_characteristics=context.daily_characteristics,
+            benchmark_weights=context.benchmark_weights,
+            open_dates=context.open_dates,
+            start_date=context.start_date,
+            end_date=context.end_date,
+            rebalance_every=context.rebalance_every,
+            industry_membership=context.industry_membership,
+            benchmark_membership_intervals=context.benchmark_membership_intervals,
+            industry_transition_date=context.industry_transition_date,
+            progress_callback=context.progress_callback,
+        )
+        if context.financial_tables is None:
+            raise ConfigurationError(
+                "builtin_daily_fundamental requires point-in-time financial tables"
+            )
+        financial = build_fundamental_factor_panel(
+            daily,
+            dict(context.financial_tables),
+            max_age_days=self.max_financial_age_days,
+            progress_callback=context.progress_callback,
+        )
+        return financial.panel
+
+
+class BuiltinA2DailyFactorProvider:
+    name = "builtin_a2_daily"
+    factor_names = ALL_DAILY_FACTOR_NAMES
+    directions: Mapping[str, int] = ALL_DAILY_DIRECTIONS
+
+    def build_raw(self, context: FeatureBuildContext) -> pd.DataFrame:
+        return build_raw_factor_panel(
+            market_panel=context.market_panel,
+            index_bars=context.index_bars,
+            daily_characteristics=context.daily_characteristics,
+            benchmark_weights=context.benchmark_weights,
+            open_dates=context.open_dates,
+            start_date=context.start_date,
+            end_date=context.end_date,
+            rebalance_every=context.rebalance_every,
+            industry_membership=context.industry_membership,
+            benchmark_membership_intervals=context.benchmark_membership_intervals,
+            industry_transition_date=context.industry_transition_date,
+            factor_names=self.factor_names,
+            progress_callback=context.progress_callback,
+        )
+
+
+class BuiltinA2DailyFundamentalFactorProvider:
+    name = "builtin_a2_daily_fundamental"
+    factor_names = (*ALL_DAILY_FACTOR_NAMES, *FUNDAMENTAL_FACTOR_NAMES)
+    directions: Mapping[str, int] = {
+        **ALL_DAILY_DIRECTIONS,
+        **FUNDAMENTAL_DIRECTIONS,
+    }
+
+    def __init__(self, *, max_financial_age_days: int) -> None:
+        if max_financial_age_days < 1:
+            raise ConfigurationError("max_financial_age_days must be positive")
+        self.max_financial_age_days = max_financial_age_days
+
+    def build_raw(self, context: FeatureBuildContext) -> pd.DataFrame:
+        daily = build_raw_factor_panel(
+            market_panel=context.market_panel,
+            index_bars=context.index_bars,
+            daily_characteristics=context.daily_characteristics,
+            benchmark_weights=context.benchmark_weights,
+            open_dates=context.open_dates,
+            start_date=context.start_date,
+            end_date=context.end_date,
+            rebalance_every=context.rebalance_every,
+            industry_membership=context.industry_membership,
+            benchmark_membership_intervals=context.benchmark_membership_intervals,
+            industry_transition_date=context.industry_transition_date,
+            factor_names=ALL_DAILY_FACTOR_NAMES,
+            progress_callback=context.progress_callback,
+        )
+        if context.financial_tables is None:
+            raise ConfigurationError(
+                "builtin_a2_daily_fundamental requires point-in-time financial tables"
+            )
+        financial = build_fundamental_factor_panel(
+            daily,
+            dict(context.financial_tables),
+            max_age_days=self.max_financial_age_days,
+            progress_callback=context.progress_callback,
+        )
+        return financial.panel
+
+
+class BuiltinA3DailyFactorProvider:
+    name = "builtin_a3_daily"
+    factor_names = A3_ALL_DAILY_FACTOR_NAMES
+    directions: Mapping[str, int] = A3_ALL_DAILY_DIRECTIONS
+
+    def build_raw(self, context: FeatureBuildContext) -> pd.DataFrame:
+        return build_raw_factor_panel(
+            market_panel=context.market_panel,
+            index_bars=context.index_bars,
+            daily_characteristics=context.daily_characteristics,
+            benchmark_weights=context.benchmark_weights,
+            open_dates=context.open_dates,
+            start_date=context.start_date,
+            end_date=context.end_date,
+            rebalance_every=context.rebalance_every,
+            industry_membership=context.industry_membership,
+            benchmark_membership_intervals=context.benchmark_membership_intervals,
+            industry_transition_date=context.industry_transition_date,
+            factor_names=self.factor_names,
+            progress_callback=context.progress_callback,
+        )
+
+
+class BuiltinA3DailyFundamentalFactorProvider:
+    name = "builtin_a3_daily_fundamental"
+    factor_names = (*A3_ALL_DAILY_FACTOR_NAMES, *FUNDAMENTAL_FACTOR_NAMES)
+    directions: Mapping[str, int] = {
+        **A3_ALL_DAILY_DIRECTIONS,
+        **FUNDAMENTAL_DIRECTIONS,
+    }
+
+    def __init__(self, *, max_financial_age_days: int) -> None:
+        if max_financial_age_days < 1:
+            raise ConfigurationError("max_financial_age_days must be positive")
+        self.max_financial_age_days = max_financial_age_days
+
+    def build_raw(self, context: FeatureBuildContext) -> pd.DataFrame:
+        daily = build_raw_factor_panel(
+            market_panel=context.market_panel,
+            index_bars=context.index_bars,
+            daily_characteristics=context.daily_characteristics,
+            benchmark_weights=context.benchmark_weights,
+            open_dates=context.open_dates,
+            start_date=context.start_date,
+            end_date=context.end_date,
+            rebalance_every=context.rebalance_every,
+            industry_membership=context.industry_membership,
+            benchmark_membership_intervals=context.benchmark_membership_intervals,
+            industry_transition_date=context.industry_transition_date,
+            factor_names=A3_ALL_DAILY_FACTOR_NAMES,
+            progress_callback=context.progress_callback,
+        )
+        if context.financial_tables is None:
+            raise ConfigurationError(
+                "builtin_a3_daily_fundamental requires point-in-time financial tables"
+            )
+        financial = build_fundamental_factor_panel(
+            daily,
+            dict(context.financial_tables),
+            max_age_days=self.max_financial_age_days,
+            progress_callback=context.progress_callback,
+        )
+        return financial.panel
 
 
 class AllFactorsSelector:
@@ -365,12 +562,136 @@ def _reject_unknown(params: Mapping[str, Any], allowed: set[str], component: str
         raise ConfigurationError(f"Unknown {component} parameters: {unknown}")
 
 
+def _stability_cost_settings(
+    params: Mapping[str, Any],
+    *,
+    component: str,
+) -> StabilityCostSettings:
+    allowed = set(StabilityCostSettings.__dataclass_fields__)
+    _reject_unknown(params, allowed, component)
+    excluded_factors = params.get("excluded_factors", ())
+    if isinstance(excluded_factors, str) or not isinstance(
+        excluded_factors,
+        Sequence,
+    ):
+        raise ConfigurationError(
+            f"{component} excluded_factors must be a sequence"
+        )
+    return StabilityCostSettings(
+        min_coverage=float(params.get("min_coverage", 0.70)),
+        min_active_date_rate=float(params.get("min_active_date_rate", 0.80)),
+        min_cross_section=int(params.get("min_cross_section", 30)),
+        min_ic_dates=int(params.get("min_ic_dates", 24)),
+        min_mean_directed_ic=float(params.get("min_mean_directed_ic", 0.0)),
+        min_direction_consistency=float(
+            params.get("min_direction_consistency", 0.50)
+        ),
+        segments=int(params.get("segments", 4)),
+        min_segment_selection_frequency=float(
+            params.get("min_segment_selection_frequency", 0.50)
+        ),
+        min_mean_net_quintile_spread=float(
+            params.get("min_mean_net_quintile_spread", 0.0)
+        ),
+        min_net_spread_consistency=float(
+            params.get("min_net_spread_consistency", 0.50)
+        ),
+        min_joint_segment_frequency=float(
+            params.get("min_joint_segment_frequency", 0.50)
+        ),
+        min_newey_west_t=float(params.get("min_newey_west_t", 0.0)),
+        max_bh_q_value=float(params.get("max_bh_q_value", 0.20)),
+        min_quintile_monotonicity=float(
+            params.get("min_quintile_monotonicity", 0.0)
+        ),
+        max_score_churn=float(params.get("max_score_churn", 0.35)),
+        max_abs_correlation=float(params.get("max_abs_correlation", 0.85)),
+        min_factors=int(params.get("min_factors", 4)),
+        max_factors=int(params.get("max_factors", 10)),
+        max_per_family=int(params.get("max_per_family", 2)),
+        max_per_cluster=int(params.get("max_per_cluster", 1)),
+        lookback_dates=int(params.get("lookback_dates", 156)),
+        churn_penalty=float(params.get("churn_penalty", 0.05)),
+        linear_cost_bps=float(params.get("linear_cost_bps", 5.0)),
+        stamp_duty_change_date=str(
+            params.get("stamp_duty_change_date", "20230828")
+        ),
+        stamp_duty_before=float(params.get("stamp_duty_before", 0.001)),
+        stamp_duty_after=float(params.get("stamp_duty_after", 0.0005)),
+        excluded_factors=tuple(str(value) for value in excluded_factors),
+    )
+
+
+def _family_model_settings(
+    params: Mapping[str, Any],
+    *,
+    component: str,
+) -> FamilyModelSettings:
+    _reject_unknown(params, set(FamilyModelSettings.__dataclass_fields__), component)
+    return FamilyModelSettings(
+        min_cross_section=int(params.get("min_cross_section", 100)),
+        min_training_rows=int(params.get("min_training_rows", 1_000)),
+        min_training_dates=int(params.get("min_training_dates", 52)),
+        min_ic_dates=int(params.get("min_ic_dates", 52)),
+        lookback_dates=int(params.get("lookback_dates", 156)),
+        ridge_alpha=float(params.get("ridge_alpha", 10.0)),
+        min_factor_fraction=float(params.get("min_factor_fraction", 0.50)),
+        min_family_fraction=float(params.get("min_family_fraction", 0.50)),
+        min_active_factors=int(params.get("min_active_factors", 5)),
+        min_active_families=int(params.get("min_active_families", 3)),
+        max_factor_weight=float(params.get("max_factor_weight", 0.20)),
+        max_family_weight=float(params.get("max_family_weight", 0.35)),
+    )
+
+
 def default_component_registry() -> ResearchComponentRegistry:
     registry = ResearchComponentRegistry()
 
     def builtin_provider(params: Mapping[str, Any]) -> FactorProvider:
         _reject_unknown(params, set(), "builtin_daily")
         return BuiltinDailyFactorProvider()
+
+    def builtin_fundamental_provider(params: Mapping[str, Any]) -> FactorProvider:
+        _reject_unknown(
+            params,
+            {"max_financial_age_days"},
+            "builtin_daily_fundamental",
+        )
+        return BuiltinDailyFundamentalFactorProvider(
+            max_financial_age_days=int(params.get("max_financial_age_days", 180))
+        )
+
+    def builtin_a2_provider(params: Mapping[str, Any]) -> FactorProvider:
+        _reject_unknown(params, set(), "builtin_a2_daily")
+        return BuiltinA2DailyFactorProvider()
+
+    def builtin_a2_fundamental_provider(
+        params: Mapping[str, Any],
+    ) -> FactorProvider:
+        _reject_unknown(
+            params,
+            {"max_financial_age_days"},
+            "builtin_a2_daily_fundamental",
+        )
+        return BuiltinA2DailyFundamentalFactorProvider(
+            max_financial_age_days=int(params.get("max_financial_age_days", 180))
+        )
+
+    def builtin_a3_provider(params: Mapping[str, Any]) -> FactorProvider:
+        _reject_unknown(params, set(), "builtin_a3_daily")
+        return BuiltinA3DailyFactorProvider()
+
+    def builtin_a3_fundamental_provider(
+        params: Mapping[str, Any],
+    ) -> FactorProvider:
+        _reject_unknown(
+            params,
+            {"max_financial_age_days"},
+            "builtin_a3_daily_fundamental",
+        )
+        return BuiltinA3DailyFundamentalFactorProvider(
+            max_financial_age_days=int(params.get("max_financial_age_days", 180))
+        )
 
     def all_selector(
         params: Mapping[str, Any],
@@ -399,38 +720,69 @@ def default_component_registry() -> ResearchComponentRegistry:
         params: Mapping[str, Any],
         directions: Mapping[str, int],
     ) -> FactorSelector:
-        allowed = set(StabilityCostSettings.__dataclass_fields__)
-        _reject_unknown(params, allowed, "stability_cost selector")
         return StabilityCostSelector(
             directions=directions,
-            families=FAMILIES,
-            settings=StabilityCostSettings(
-                min_coverage=float(params.get("min_coverage", 0.70)),
-                min_cross_section=int(params.get("min_cross_section", 30)),
-                min_ic_dates=int(params.get("min_ic_dates", 24)),
-                min_mean_directed_ic=float(
-                    params.get("min_mean_directed_ic", 0.0)
+            families={**A3_ALL_DAILY_FAMILIES, **FUNDAMENTAL_FAMILIES},
+            settings=_stability_cost_settings(
+                params,
+                component="stability_cost selector",
+            ),
+        )
+
+    def incremental_stability_cost_selector(
+        params: Mapping[str, Any],
+        directions: Mapping[str, int],
+    ) -> FactorSelector:
+        _reject_unknown(
+            params,
+            {
+                "candidate_factors",
+                "core",
+                "additions",
+                "min_core_fraction",
+                "min_residual_variance_ratio",
+            },
+            "incremental_stability_cost selector",
+        )
+        raw_candidates = params.get("candidate_factors", ())
+        if isinstance(raw_candidates, str) or not isinstance(
+            raw_candidates,
+            Sequence,
+        ):
+            raise ConfigurationError(
+                "incremental_stability_cost candidate_factors must be a sequence"
+            )
+        raw_core = params.get("core", {})
+        raw_additions = params.get("additions", {})
+        if not isinstance(raw_core, Mapping) or not isinstance(
+            raw_additions,
+            Mapping,
+        ):
+            raise ConfigurationError(
+                "incremental_stability_cost core and additions must be mappings"
+            )
+        addition_defaults: dict[str, Any] = {
+            "min_factors": 1,
+            "max_factors": max(len(raw_candidates), 1),
+        }
+        addition_params = {**addition_defaults, **dict(raw_additions)}
+        return IncrementalStabilityCostSelector(
+            directions=directions,
+            families={**A3_ALL_DAILY_FAMILIES, **FUNDAMENTAL_FAMILIES},
+            settings=IncrementalAdmissionSettings(
+                candidate_factors=tuple(str(value) for value in raw_candidates),
+                core=_stability_cost_settings(
+                    raw_core,
+                    component="incremental_stability_cost core",
                 ),
-                min_direction_consistency=float(
-                    params.get("min_direction_consistency", 0.50)
+                additions=_stability_cost_settings(
+                    addition_params,
+                    component="incremental_stability_cost additions",
                 ),
-                segments=int(params.get("segments", 4)),
-                min_segment_selection_frequency=float(
-                    params.get("min_segment_selection_frequency", 0.50)
+                min_core_fraction=float(params.get("min_core_fraction", 0.50)),
+                min_residual_variance_ratio=float(
+                    params.get("min_residual_variance_ratio", 0.05)
                 ),
-                min_newey_west_t=float(params.get("min_newey_west_t", 0.0)),
-                min_quintile_monotonicity=float(
-                    params.get("min_quintile_monotonicity", 0.0)
-                ),
-                max_score_churn=float(params.get("max_score_churn", 0.35)),
-                max_abs_correlation=float(
-                    params.get("max_abs_correlation", 0.85)
-                ),
-                min_factors=int(params.get("min_factors", 4)),
-                max_factors=int(params.get("max_factors", 10)),
-                max_per_family=int(params.get("max_per_family", 2)),
-                lookback_dates=int(params.get("lookback_dates", 156)),
-                churn_penalty=float(params.get("churn_penalty", 0.05)),
             ),
         )
 
@@ -477,18 +829,147 @@ def default_component_registry() -> ResearchComponentRegistry:
             min_factor_fraction=float(params.get("min_factor_fraction", 0.80)),
         )
 
-    def ic_shrinkage_model(
+    def family_model(
         params: Mapping[str, Any],
         directions: Mapping[str, int],
+        *,
+        method: FamilyMethod,
+    ) -> AlphaModel:
+        return FamilyAlphaModel(
+            method=method,
+            directions=directions,
+            families={**A3_ALL_DAILY_FAMILIES, **FUNDAMENTAL_FAMILIES},
+            settings=_family_model_settings(
+                params,
+                component=f"family_{method} model",
+            ),
+        )
+
+    def residual_sleeve_model(
+        params: Mapping[str, Any],
+        directions: Mapping[str, int],
+        *,
+        name: str = "residual_sleeve_blend",
+        method: str = "oof_net_residual_sleeve_blend",
+    ) -> AlphaModel:
+        _reject_unknown(
+            params,
+            set(ResidualSleeveSettings.__dataclass_fields__),
+            f"{name} model",
+        )
+        raw_candidates = params.get("candidate_factors", ())
+        if isinstance(raw_candidates, str) or not isinstance(
+            raw_candidates,
+            Sequence,
+        ):
+            raise ConfigurationError(
+                f"{name} candidate_factors must be a sequence"
+            )
+        raw_core = params.get("core", {})
+        if not isinstance(raw_core, Mapping):
+            raise ConfigurationError(
+                f"{name} core must be a mapping"
+            )
+        return ResidualSleeveBlendAlphaModel(
+            directions=directions,
+            families={**A3_ALL_DAILY_FAMILIES, **FUNDAMENTAL_FAMILIES},
+            name=name,
+            method=method,
+            settings=ResidualSleeveSettings(
+                candidate_factors=tuple(str(value) for value in raw_candidates),
+                core=_family_model_settings(
+                    raw_core,
+                    component=f"{name} core model",
+                ),
+                min_core_fraction=float(params.get("min_core_fraction", 0.50)),
+                min_candidate_fraction=float(
+                    params.get("min_candidate_fraction", 0.50)
+                ),
+                min_cross_section=int(params.get("min_cross_section", 100)),
+                min_sleeve_dates=int(params.get("min_sleeve_dates", 52)),
+                lookback_dates=int(params.get("lookback_dates", 156)),
+                oof_segments=int(params.get("oof_segments", 4)),
+                min_oof_train_dates=int(
+                    params.get("min_oof_train_dates", 36)
+                ),
+                min_oof_blocks=int(params.get("min_oof_blocks", 2)),
+                min_oof_positive_block_fraction=float(
+                    params.get("min_oof_positive_block_fraction", 0.50)
+                ),
+                min_oof_t=float(params.get("min_oof_t", 0.0)),
+                oof_target_t=float(params.get("oof_target_t", 1.0)),
+                candidate_weighting_method=str(
+                    params.get("candidate_weighting_method", "equal")
+                ),
+                candidate_recent_segments=int(
+                    params.get("candidate_recent_segments", 2)
+                ),
+                min_candidate_recent_positive_fraction=float(
+                    params.get(
+                        "min_candidate_recent_positive_fraction",
+                        0.0,
+                    )
+                ),
+                min_candidate_weight_t=float(
+                    params.get("min_candidate_weight_t", 0.0)
+                ),
+                candidate_weight_full_confidence_t=float(
+                    params.get("candidate_weight_full_confidence_t", 0.0)
+                ),
+                candidate_churn_floor=float(
+                    params.get("candidate_churn_floor", 0.02)
+                ),
+                max_blend_churn_ratio=float(
+                    params.get("max_blend_churn_ratio", 0.0)
+                ),
+                turnover_budget_grid_size=int(
+                    params.get("turnover_budget_grid_size", 41)
+                ),
+                hac_max_lags=int(params.get("hac_max_lags", 4)),
+                risk_aversion=float(params.get("risk_aversion", 3.0)),
+                candidate_anchor_penalty=float(
+                    params.get("candidate_anchor_penalty", 0.001)
+                ),
+                candidate_change_penalty=float(
+                    params.get("candidate_change_penalty", 0.001)
+                ),
+                linear_cost_bps=float(params.get("linear_cost_bps", 5.0)),
+                stamp_duty_change_date=str(
+                    params.get("stamp_duty_change_date", "20230828")
+                ),
+                stamp_duty_before=float(
+                    params.get("stamp_duty_before", 0.001)
+                ),
+                stamp_duty_after=float(
+                    params.get("stamp_duty_after", 0.0005)
+                ),
+                feasibility_tolerance=float(
+                    params.get("feasibility_tolerance", 1e-8)
+                ),
+            ),
+        )
+
+    def make_ic_shrinkage_model(
+        params: Mapping[str, Any],
+        directions: Mapping[str, int],
+        *,
+        component: str,
+        name: str,
     ) -> AlphaModel:
         _reject_unknown(
             params,
             set(ICShrinkageSettings.__dataclass_fields__),
-            "ic_shrinkage model",
+            component,
         )
         shrinkage_enabled = params.get("shrinkage_enabled", True)
         if not isinstance(shrinkage_enabled, bool):
             raise ConfigurationError("model shrinkage_enabled must be a boolean")
+        raw_core_factors = params.get("core_factors", ())
+        if isinstance(raw_core_factors, str) or not isinstance(
+            raw_core_factors,
+            Sequence,
+        ):
+            raise ConfigurationError("model core_factors must be a sequence")
         raw_solvers = params.get("solvers", ("CLARABEL", "OSQP"))
         if isinstance(raw_solvers, str) or not isinstance(raw_solvers, Sequence):
             raise ConfigurationError("model solvers must be a sequence of names")
@@ -497,6 +978,8 @@ def default_component_registry() -> ResearchComponentRegistry:
         solvers = tuple(raw_solvers)
         return ICShrinkageAlphaModel(
             directions=directions,
+            families={**A3_ALL_DAILY_FAMILIES, **FUNDAMENTAL_FAMILIES},
+            name=name,
             settings=ICShrinkageSettings(
                 min_cross_section=int(params.get("min_cross_section", 100)),
                 min_ic_dates=int(params.get("min_ic_dates", 52)),
@@ -517,6 +1000,14 @@ def default_component_registry() -> ResearchComponentRegistry:
                 weight_turnover_penalty=float(
                     params.get("weight_turnover_penalty", 0.01)
                 ),
+                weight_change_norm=str(params.get("weight_change_norm", "l2")),
+                core_factors=tuple(str(value) for value in raw_core_factors),
+                core_anchor_mode=str(
+                    params.get("core_anchor_mode", "equal_family")
+                ),
+                core_anchor_penalty=float(
+                    params.get("core_anchor_penalty", 0.0)
+                ),
                 max_factor_weight=float(params.get("max_factor_weight", 0.35)),
                 min_active_factors=int(params.get("min_active_factors", 3)),
                 min_factor_fraction=float(params.get("min_factor_fraction", 0.50)),
@@ -525,6 +1016,35 @@ def default_component_registry() -> ResearchComponentRegistry:
                     params.get("feasibility_tolerance", 1e-7)
                 ),
             ),
+        )
+
+    def ic_shrinkage_model(
+        params: Mapping[str, Any],
+        directions: Mapping[str, int],
+    ) -> AlphaModel:
+        return make_ic_shrinkage_model(
+            params,
+            directions,
+            component="ic_shrinkage model",
+            name="ic_shrinkage",
+        )
+
+    def core_ic_shrinkage_model(
+        params: Mapping[str, Any],
+        directions: Mapping[str, int],
+    ) -> AlphaModel:
+        merged = {
+            "weight_change_norm": "l1",
+            "core_anchor_mode": "equal_family",
+            "core_anchor_penalty": 0.05,
+            "max_factor_weight": 1.0,
+            **dict(params),
+        }
+        return make_ic_shrinkage_model(
+            merged,
+            directions,
+            component="core_ic_shrinkage model",
+            name="core_ic_shrinkage",
         )
 
     def robust_calibrator(params: Mapping[str, Any]) -> ReturnCalibrator:
@@ -565,12 +1085,65 @@ def default_component_registry() -> ResearchComponentRegistry:
         )
 
     registry.register_feature_provider("builtin_daily", builtin_provider)
+    registry.register_feature_provider(
+        "builtin_daily_fundamental",
+        builtin_fundamental_provider,
+    )
+    registry.register_feature_provider("builtin_a2_daily", builtin_a2_provider)
+    registry.register_feature_provider(
+        "builtin_a2_daily_fundamental",
+        builtin_a2_fundamental_provider,
+    )
+    registry.register_feature_provider("builtin_a3_daily", builtin_a3_provider)
+    registry.register_feature_provider(
+        "builtin_a3_daily_fundamental",
+        builtin_a3_fundamental_provider,
+    )
     registry.register_selector("all", all_selector)
     registry.register_selector("coverage_correlation", coverage_selector)
     registry.register_selector("stability_cost", stability_cost_selector)
+    registry.register_selector(
+        "incremental_stability_cost",
+        incremental_stability_cost_selector,
+    )
     registry.register_model("direction_equal_weight", equal_model)
     registry.register_model("ridge", ridge_model)
+    registry.register_model(
+        "family_direction_equal",
+        lambda params, directions: family_model(
+            params,
+            directions,
+            method="direction_equal",
+        ),
+    )
+    registry.register_model(
+        "family_ridge",
+        lambda params, directions: family_model(
+            params,
+            directions,
+            method="ridge",
+        ),
+    )
+    registry.register_model(
+        "family_robust_ic",
+        lambda params, directions: family_model(
+            params,
+            directions,
+            method="robust_ic",
+        ),
+    )
     registry.register_model("ic_shrinkage", ic_shrinkage_model)
+    registry.register_model("core_ic_shrinkage", core_ic_shrinkage_model)
+    registry.register_model("residual_sleeve_blend", residual_sleeve_model)
+    registry.register_model(
+        "turnover_budgeted_residual_sleeve",
+        lambda params, directions: residual_sleeve_model(
+            params,
+            directions,
+            name="turnover_budgeted_residual_sleeve",
+            method="turnover_budgeted_residual_sleeve_blend",
+        ),
+    )
     registry.register_calibrator("robust_cross_section", robust_calibrator)
     registry.register_calibrator("rolling_ridge", rolling_ridge_calibrator)
     return registry

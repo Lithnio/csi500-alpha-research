@@ -1,0 +1,166 @@
+study:
+  id: a1-risk-translation-v1
+  base_config: ../extended_validation_2023_2025.yaml
+  max_trials: 4
+
+selection:
+  primary_tolerance: 0.10
+  gates:
+    - path: quality_passed
+      operator: "=="
+      value: true
+    - path: optimizer_solve_rate
+      operator: ">="
+      value: 0.95
+    - path: valid_expected_returns
+      operator: ">"
+      value: 0
+    - path: evaluation.calibration.realized_dates
+      operator: ">"
+      value: 0
+    - path: evaluation.execution.executed_orders
+      operator: ">"
+      value: 0
+    - path: evaluation.yearly.positive_active_year_fraction
+      operator: ">="
+      value: 0.66
+    - path: evaluation.yearly.worst_active_max_drawdown
+      operator: ">="
+      value: -0.06
+    - path: evaluation.constraints.post_trade_material_configured_breach_fraction
+      operator: "<="
+      value: 0.10
+    - path: evaluation.constraints.post_trade_material_execution_deterioration_fraction
+      operator: "<="
+      value: 0.10
+    - path: evaluation.risk.factor_model_fallback_attempts
+      operator: "=="
+      value: 0
+    - path: evaluation.model_weights.minimum_effective_factor_count
+      operator: ">="
+      value: 5.0
+    - path: evaluation.model_weights.maximum_single_factor_weight
+      operator: "<="
+      value: 0.200001
+    - path: evaluation.model_weights.maximum_family_weight
+      operator: "<="
+      value: 0.350001
+  primary:
+    path: evaluation.yearly.median_information_ratio
+    direction: maximize
+  tie_breakers:
+    - path: evaluation.yearly.minimum_information_ratio
+      direction: maximize
+    - path: metrics.rolling_beta_abs_deviation_p95
+      direction: minimize
+    - path: metrics.active_max_drawdown
+      direction: maximize
+    - path: evaluation.execution.cost_bps_of_executed_notional
+      direction: minimize
+    - path: metrics.average_turnover
+      direction: minimize
+
+trials:
+  - id: a0_current
+    purpose: Current Ledoit-Wolf covariance and feature-based 60-day beta control.
+    overrides:
+      workflow: &fixed_signal
+        feature_provider:
+          name: builtin_daily_fundamental
+          params:
+            max_financial_age_days: 180
+        selector:
+          name: stability_cost
+          params: &fixed_selector
+            min_coverage: 0.80
+            min_active_date_rate: 0.80
+            min_cross_section: 100
+            min_ic_dates: 100
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_mean_net_quintile_spread: 0.0
+            min_net_spread_consistency: 0.50
+            min_joint_segment_frequency: 0.50
+            min_newey_west_t: 0.0
+            max_bh_q_value: 0.20
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.75
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            max_per_cluster: 1
+            lookback_dates: 156
+            churn_penalty: 0.05
+            linear_cost_bps: 5.0
+            stamp_duty_change_date: "20230828"
+            stamp_duty_before: 0.001
+            stamp_duty_after: 0.0005
+        model:
+          name: family_direction_equal
+          params: &fixed_model
+            min_cross_section: 100
+            min_training_rows: 1000
+            min_training_dates: 100
+            min_ic_dates: 100
+            lookback_dates: 156
+            ridge_alpha: 10.0
+            min_factor_fraction: 0.50
+            min_family_fraction: 0.50
+            min_active_factors: 5
+            min_active_families: 3
+            max_factor_weight: 0.20
+            max_family_weight: 0.35
+        calibrator:
+          name: rolling_ridge
+          params: &fixed_calibrator
+            alpha: 10.0
+            min_training_rows: 1000
+            min_training_dates: 12
+            score_clip: 3.0
+            label_clip: 0.20
+            max_abs_slope: 0.05
+            max_abs_expected_return: 0.10
+      risk: &current_risk
+        model: ledoit_wolf
+        beta_model: feature_60
+        factor_half_life: 63.0
+        specific_half_life: 63.0
+        factor_covariance_shrinkage: 0.25
+        specific_variance_shrinkage: 0.50
+        factor_ridge: 0.001
+        min_factor_cross_section: 100
+        style_exposure_clip: 3.0
+        beta_lookback: 252
+        beta_min_history: 60
+        beta_half_life: 63.0
+        beta_shrinkage: 0.25
+        beta_clip_min: 0.25
+        beta_clip_max: 1.75
+
+  - id: a1_beta_ewma
+    purpose: Isolate the effect of a point-in-time EWMA beta shrunk toward one.
+    overrides:
+      workflow: *fixed_signal
+      risk:
+        <<: *current_risk
+        beta_model: ewma_shrunk
+
+  - id: a1_factor_covariance
+    purpose: Isolate the effect of the industry-and-style EWMA factor covariance.
+    overrides:
+      workflow: *fixed_signal
+      risk:
+        <<: *current_risk
+        model: factor_ewma
+
+  - id: a1_joint
+    purpose: Test the factor covariance and shrunk EWMA beta together.
+    overrides:
+      workflow: *fixed_signal
+      risk:
+        <<: *current_risk
+        model: factor_ewma
+        beta_model: ewma_shrunk

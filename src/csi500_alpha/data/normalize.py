@@ -61,7 +61,21 @@ def normalize_weights(frames: Iterable[pd.DataFrame]) -> pd.DataFrame:
     return raw.sort_values(["snapshot_date", "instrument"]).reset_index(drop=True)
 
 
-def normalize_index_bars(frame: pd.DataFrame) -> pd.DataFrame:
+def _normalize_single_index_bars(frame: pd.DataFrame) -> pd.DataFrame:
+    required = {
+        "ts_code",
+        "trade_date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pre_close",
+        "vol",
+        "amount",
+    }
+    missing = sorted(required.difference(frame.columns))
+    if missing:
+        raise ValueError(f"Index bars are missing columns: {missing}")
     result = frame.copy()
     result["trade_date"] = _dates(result["trade_date"])
     numeric = ["open", "high", "low", "close", "pre_close", "vol", "amount"]
@@ -73,6 +87,53 @@ def normalize_index_bars(frame: pd.DataFrame) -> pd.DataFrame:
         .sort_values(["trade_date", "index_code"])
         .reset_index(drop=True)
     )
+
+
+def normalize_index_bars(
+    price_frame: pd.DataFrame,
+    total_return_frame: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build one price/total-return benchmark table with an adjusted-open proxy.
+
+    Tushare publishes the CSI 500 total-return close but leaves its OHLC fields
+    empty.  The same-day total-return/price close ratio is the cumulative
+    dividend adjustment.  Applying it to the price-index open gives an opening
+    series on the same reinvested-dividend scale as the total-return close.
+    """
+
+    price = _normalize_single_index_bars(price_frame)
+    total = _normalize_single_index_bars(total_return_frame)
+    if price.empty or total.empty:
+        raise ValueError("Price and total-return index bars must both be nonempty")
+    if price["index_code"].nunique() != 1 or total["index_code"].nunique() != 1:
+        raise ValueError("Each benchmark input must contain exactly one index code")
+
+    price_dates = set(price["trade_date"])
+    total_dates = set(total["trade_date"])
+    if price_dates != total_dates:
+        missing_total = sorted(price_dates.difference(total_dates))
+        missing_price = sorted(total_dates.difference(price_dates))
+        raise ValueError(
+            "Price and total-return index dates differ: "
+            f"missing_total_return={missing_total[:10]}, "
+            f"missing_price={missing_price[:10]}"
+        )
+
+    total_code = str(total["index_code"].iloc[0])
+    total = total.loc[:, ["trade_date", "close", "pre_close"]].rename(
+        columns={
+            "close": "total_return_close",
+            "pre_close": "total_return_pre_close",
+        }
+    )
+    result = price.merge(total, on="trade_date", how="inner", validate="one_to_one")
+    result["total_return_index_code"] = total_code
+    result["total_return_factor"] = result["total_return_close"] / result["close"]
+    result["benchmark_open"] = result["open"] * result["total_return_factor"]
+    result["benchmark_close"] = result["total_return_close"]
+    result["benchmark_pre_close"] = result["total_return_pre_close"]
+    result["benchmark_method"] = "total_return_close_with_price_open_adjustment"
+    return result.sort_values("trade_date").reset_index(drop=True)
 
 
 def normalize_stock_bars(frames: Iterable[pd.DataFrame]) -> pd.DataFrame:

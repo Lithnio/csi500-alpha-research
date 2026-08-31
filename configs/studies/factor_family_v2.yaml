@@ -1,0 +1,152 @@
+study:
+  id: factor-family-v2-method-screen
+  base_config: ../extended_validation_2023_2025.yaml
+  max_trials: 3
+
+selection:
+  primary_tolerance: 0.10
+  gates:
+    - path: quality_passed
+      operator: "=="
+      value: true
+    - path: optimizer_solve_rate
+      operator: ">="
+      value: 0.95
+    - path: valid_expected_returns
+      operator: ">"
+      value: 0
+    - path: evaluation.calibration.realized_dates
+      operator: ">"
+      value: 0
+    - path: evaluation.execution.executed_orders
+      operator: ">"
+      value: 0
+    - path: evaluation.yearly.positive_active_year_fraction
+      operator: ">="
+      value: 0.66
+    - path: evaluation.yearly.worst_active_max_drawdown
+      operator: ">="
+      value: -0.06
+    - path: evaluation.model_weights.minimum_effective_factor_count
+      operator: ">="
+      value: 5.0
+    - path: evaluation.model_weights.maximum_single_factor_weight
+      operator: "<="
+      value: 0.200001
+    - path: evaluation.model_weights.maximum_family_weight
+      operator: "<="
+      value: 0.350001
+  primary:
+    path: evaluation.yearly.median_information_ratio
+    direction: maximize
+  tie_breakers:
+    - path: metrics.information_ratio
+      direction: maximize
+    - path: evaluation.yearly.minimum_information_ratio
+      direction: maximize
+    - path: metrics.active_max_drawdown
+      direction: maximize
+    - path: evaluation.execution.cost_bps_of_executed_notional
+      direction: minimize
+    - path: metrics.average_turnover
+      direction: minimize
+
+trials:
+  - id: f0_family_equal
+    purpose: Direction-aligned factors, equalized first within and then across families.
+    overrides:
+      workflow:
+        feature_provider:
+          name: builtin_daily_fundamental
+          params:
+            max_financial_age_days: 180
+        selector:
+          name: stability_cost
+          params: &fold_selector
+            min_coverage: 0.80
+            min_active_date_rate: 0.80
+            min_cross_section: 100
+            min_ic_dates: 100
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_mean_net_quintile_spread: 0.0
+            min_net_spread_consistency: 0.50
+            min_joint_segment_frequency: 0.50
+            min_newey_west_t: 0.0
+            max_bh_q_value: 0.20
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.75
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            max_per_cluster: 1
+            lookback_dates: 156
+            churn_penalty: 0.05
+            linear_cost_bps: 5.0
+            stamp_duty_change_date: "20230828"
+            stamp_duty_before: 0.001
+            stamp_duty_after: 0.0005
+        model:
+          name: family_direction_equal
+          params: &family_model
+            min_cross_section: 100
+            min_training_rows: 1000
+            min_training_dates: 100
+            min_ic_dates: 100
+            lookback_dates: 156
+            ridge_alpha: 10.0
+            min_factor_fraction: 0.50
+            min_family_fraction: 0.50
+            min_active_factors: 5
+            min_active_families: 3
+            max_factor_weight: 0.20
+            max_family_weight: 0.35
+        calibrator:
+          name: rolling_ridge
+          params: &calibrator
+            alpha: 10.0
+            min_training_rows: 1000
+            min_training_dates: 12
+            score_clip: 3.0
+            label_clip: 0.20
+            max_abs_slope: 0.05
+            max_abs_expected_return: 0.10
+
+  - id: f1_family_ridge
+    purpose: Positive regularized regression assigns weights to family composites.
+    overrides:
+      workflow:
+        feature_provider:
+          name: builtin_daily_fundamental
+          params:
+            max_financial_age_days: 180
+        selector:
+          name: stability_cost
+          params: *fold_selector
+        model:
+          name: family_ridge
+          params: *family_model
+        calibrator:
+          name: rolling_ridge
+          params: *calibrator
+
+  - id: f2_family_robust_ic
+    purpose: Median IC and positive-block frequency weight each surviving family.
+    overrides:
+      workflow:
+        feature_provider:
+          name: builtin_daily_fundamental
+          params:
+            max_financial_age_days: 180
+        selector:
+          name: stability_cost
+          params: *fold_selector
+        model:
+          name: family_robust_ic
+          params: *family_model
+        calibrator:
+          name: rolling_ridge
+          params: *calibrator

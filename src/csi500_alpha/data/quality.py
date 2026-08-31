@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -8,6 +8,11 @@ import numpy as np
 import pandas as pd
 
 from csi500_alpha.config import AppConfig
+from csi500_alpha.data.benchmark import (
+    EVENT_COLUMNS,
+    INTERVAL_COLUMNS,
+    active_membership_asof,
+)
 from csi500_alpha.data.eligibility import validate_eligibility_data
 from csi500_alpha.data.storage import write_json_atomic
 from csi500_alpha.errors import DataQualityError
@@ -57,6 +62,8 @@ def load_silver(config: AppConfig) -> dict[str, pd.DataFrame]:
     required = [
         "calendar",
         "benchmark_weights",
+        "benchmark_membership_events",
+        "benchmark_membership_intervals",
         "index_bars",
         "stock_bars",
         "adjustments",
@@ -78,19 +85,27 @@ def load_silver(config: AppConfig) -> dict[str, pd.DataFrame]:
         for name in ("name_history", "resumptions")
         if (root / f"{name}.parquet").exists()
     ]
-    return {
+    tables = {
         name: pd.read_parquet(root / f"{name}.parquet")
         for name in [*required, *optional]
     }
+    financial_root = root / "financial"
+    if financial_root.exists():
+        for path in sorted(financial_root.glob("*.parquet")):
+            tables[f"financial_{path.stem}"] = pd.read_parquet(path)
+    return tables
 
 
 def validate_smoke(config: AppConfig, tables: dict[str, pd.DataFrame]) -> QualityReport:
     checks: list[QualityCheck] = []
     calendar = tables["calendar"]
     weights = tables["benchmark_weights"]
+    membership_events = tables["benchmark_membership_events"]
+    membership_intervals = tables["benchmark_membership_intervals"]
     bars = tables["stock_bars"]
     adjustments = tables["adjustments"]
     limits = tables["price_limits"]
+    index_bars = tables["index_bars"]
 
     open_dates = calendar.loc[calendar["is_open"] == 1, "trade_date"].astype(str)
     decision_dates = [date for date in open_dates if date >= config.dates.backtest_start]
@@ -102,6 +117,151 @@ def validate_smoke(config: AppConfig, tables: dict[str, pd.DataFrame]) -> Qualit
             {"open_dates": int(len(open_dates))},
         )
     )
+
+    index_required = {
+        "trade_date",
+        "index_code",
+        "total_return_index_code",
+        "open",
+        "close",
+        "total_return_close",
+        "total_return_pre_close",
+        "total_return_factor",
+        "benchmark_open",
+        "benchmark_close",
+        "benchmark_pre_close",
+        "benchmark_method",
+    }
+    missing_index_columns = sorted(index_required.difference(index_bars.columns))
+    checks.append(
+        QualityCheck(
+            "benchmark_total_return_schema",
+            not missing_index_columns and not index_bars.empty,
+            "error",
+            {
+                "rows": int(len(index_bars)),
+                "missing_columns": missing_index_columns,
+            },
+        )
+    )
+    if not missing_index_columns and not index_bars.empty:
+        index_dates = index_bars["trade_date"].astype(str)
+        expected_dates = set(open_dates)
+        actual_dates = set(index_dates)
+        missing_dates = sorted(expected_dates.difference(actual_dates))
+        extra_dates = sorted(actual_dates.difference(expected_dates))
+        duplicate_dates = int(index_dates.duplicated().sum())
+        price_codes = sorted(index_bars["index_code"].dropna().astype(str).unique())
+        total_return_codes = sorted(
+            index_bars["total_return_index_code"].dropna().astype(str).unique()
+        )
+        checks.extend(
+            [
+                QualityCheck(
+                    "benchmark_total_return_calendar",
+                    duplicate_dates == 0 and not missing_dates and not extra_dates,
+                    "error",
+                    {
+                        "duplicates": duplicate_dates,
+                        "missing_dates": missing_dates[:20],
+                        "extra_dates": extra_dates[:20],
+                        "expected_rows": len(expected_dates),
+                        "actual_rows": len(index_bars),
+                    },
+                ),
+                QualityCheck(
+                    "benchmark_total_return_codes",
+                    price_codes == [config.source.index_code]
+                    and total_return_codes
+                    == [config.source.total_return_index_code],
+                    "error",
+                    {
+                        "price_codes": price_codes,
+                        "expected_price_code": config.source.index_code,
+                        "total_return_codes": total_return_codes,
+                        "expected_total_return_code": (
+                            config.source.total_return_index_code
+                        ),
+                    },
+                ),
+            ]
+        )
+
+        numeric_columns = [
+            "open",
+            "close",
+            "total_return_close",
+            "total_return_pre_close",
+            "total_return_factor",
+            "benchmark_open",
+            "benchmark_close",
+            "benchmark_pre_close",
+        ]
+        numeric = index_bars[numeric_columns].apply(
+            pd.to_numeric,
+            errors="coerce",
+        )
+        invalid_values = int((~np.isfinite(numeric) | (numeric <= 0)).sum().sum())
+        expected_factor = numeric["total_return_close"] / numeric["close"]
+        factor_errors = int(
+            (~np.isclose(
+                numeric["total_return_factor"],
+                expected_factor,
+                rtol=1e-12,
+                atol=1e-12,
+            )).sum()
+        )
+        open_errors = int(
+            (~np.isclose(
+                numeric["benchmark_open"],
+                numeric["open"] * numeric["total_return_factor"],
+                rtol=1e-12,
+                atol=1e-12,
+            )).sum()
+        )
+        close_errors = int(
+            (~np.isclose(
+                numeric["benchmark_close"],
+                numeric["total_return_close"],
+                rtol=1e-12,
+                atol=1e-12,
+            )).sum()
+        )
+        pre_close_errors = int(
+            (~np.isclose(
+                numeric["benchmark_pre_close"],
+                numeric["total_return_pre_close"],
+                rtol=1e-12,
+                atol=1e-12,
+            )).sum()
+        )
+        method_errors = int(
+            (
+                index_bars["benchmark_method"].astype(str)
+                != "total_return_close_with_price_open_adjustment"
+            ).sum()
+        )
+        checks.append(
+            QualityCheck(
+                "benchmark_total_return_identity",
+                invalid_values == 0
+                and factor_errors == 0
+                and open_errors == 0
+                and close_errors == 0
+                and pre_close_errors == 0
+                and method_errors == 0,
+                "error",
+                {
+                    "invalid_values": invalid_values,
+                    "factor_errors": factor_errors,
+                    "open_errors": open_errors,
+                    "close_errors": close_errors,
+                    "pre_close_errors": pre_close_errors,
+                    "method_errors": method_errors,
+                    "method": str(index_bars["benchmark_method"].iloc[0]),
+                },
+            )
+        )
 
     if config.download.include_daily_basic:
         characteristics = tables["daily_characteristics"]
@@ -294,6 +454,14 @@ def validate_smoke(config: AppConfig, tables: dict[str, pd.DataFrame]) -> Qualit
             ),
         ]
     )
+    checks.extend(
+        _benchmark_membership_checks(
+            weights,
+            membership_events,
+            membership_intervals,
+            tuple(open_dates.astype(str)),
+        )
+    )
 
     eligibility_tables = {"name_history", "resumptions"}.intersection(tables)
     if eligibility_tables:
@@ -421,7 +589,11 @@ def validate_smoke(config: AppConfig, tables: dict[str, pd.DataFrame]) -> Qualit
         ]
     )
 
-    member_keys = _dynamic_member_keys(weights, decision_dates)
+    member_keys = _dynamic_member_keys(
+        weights,
+        membership_intervals,
+        decision_dates,
+    )
     if {"name_history", "resumptions"}.issubset(tables):
         name_coverage = _name_history_member_coverage(
             member_keys,
@@ -634,39 +806,323 @@ def validate_smoke(config: AppConfig, tables: dict[str, pd.DataFrame]) -> Qualit
 
 def _dynamic_member_keys(
     weights: pd.DataFrame,
+    membership_intervals: pd.DataFrame,
     decision_dates: list[str] | pd.Series,
 ) -> pd.DataFrame:
     columns = ["trade_date", "snapshot_date", "instrument"]
-    if weights.empty:
+    if weights.empty or membership_intervals.empty:
         return pd.DataFrame(columns=columns)
-    grouped = {
-        str(snapshot): frame["instrument"].astype(str).drop_duplicates().sort_values()
-        for snapshot, frame in weights.groupby("snapshot_date", sort=True)
-    }
-    snapshots = sorted(grouped)
-    snapshot_position = -1
+    snapshots = sorted(weights["snapshot_date"].astype(str).unique())
     frames: list[pd.DataFrame] = []
     for trade_date in sorted({str(value) for value in decision_dates}):
-        while (
-            snapshot_position + 1 < len(snapshots)
-            and snapshots[snapshot_position + 1] < trade_date
-        ):
-            snapshot_position += 1
+        snapshot_position = bisect_left(snapshots, trade_date) - 1
         if snapshot_position < 0:
             continue
         snapshot_date = snapshots[snapshot_position]
+        active = active_membership_asof(membership_intervals, trade_date)
+        if active.empty:
+            continue
         frames.append(
             pd.DataFrame(
                 {
                     "trade_date": trade_date,
                     "snapshot_date": snapshot_date,
-                    "instrument": grouped[snapshot_date].to_numpy(),
+                    "instrument": active["instrument"].astype(str).to_numpy(),
                 }
             )
         )
     if not frames:
         return pd.DataFrame(columns=columns)
     return pd.concat(frames, ignore_index=True)[columns]
+
+
+def _benchmark_membership_checks(
+    weights: pd.DataFrame,
+    events: pd.DataFrame,
+    intervals: pd.DataFrame,
+    open_dates: tuple[str, ...],
+) -> list[QualityCheck]:
+    missing_event_columns = sorted(set(EVENT_COLUMNS).difference(events.columns))
+    missing_interval_columns = sorted(
+        set(INTERVAL_COLUMNS).difference(intervals.columns)
+    )
+    schema_ok = (
+        not missing_event_columns
+        and not missing_interval_columns
+        and not events.empty
+        and not intervals.empty
+    )
+    checks = [
+        QualityCheck(
+            "benchmark_membership_schema",
+            schema_ok,
+            "error",
+            {
+                "event_rows": int(len(events)),
+                "interval_rows": int(len(intervals)),
+                "missing_event_columns": missing_event_columns,
+                "missing_interval_columns": missing_interval_columns,
+            },
+        )
+    ]
+    if not schema_ok:
+        return checks
+
+    normalized_events = events.copy()
+    normalized_intervals = intervals.copy()
+    event_string_columns = [
+        "event_id",
+        "published_date",
+        "effective_from",
+        "event_type",
+        "action",
+        "instrument",
+        "confirmation_snapshot_date",
+        "source",
+    ]
+    for column in event_string_columns:
+        normalized_events[column] = normalized_events[column].astype(str)
+    for column in (
+        "instrument",
+        "effective_from",
+        "entry_event_id",
+        "entry_published_date",
+        "entry_source",
+    ):
+        normalized_intervals[column] = normalized_intervals[column].astype(str)
+
+    open_date_set = set(open_dates)
+    snapshot_date_set = set(weights["snapshot_date"].astype(str))
+    duplicate_actions = int(
+        normalized_events.duplicated(["event_id", "action", "instrument"]).sum()
+    )
+    invalid_actions = int(
+        (~normalized_events["action"].isin({"add", "remove"})).sum()
+    )
+    late_publications = int(
+        (
+            normalized_events["published_date"]
+            > normalized_events["effective_from"]
+        ).sum()
+    )
+    non_open_events = int(
+        (~normalized_events["effective_from"].isin(open_date_set)).sum()
+    )
+    unknown_confirmations = int(
+        (
+            ~normalized_events["confirmation_snapshot_date"].isin(
+                snapshot_date_set
+            )
+        ).sum()
+    )
+    malformed_events: list[dict[str, Any]] = []
+    for event_id, frame in normalized_events.groupby("event_id", sort=True):
+        event_type = str(frame["event_type"].iloc[0])
+        additions = set(frame.loc[frame["action"] == "add", "instrument"])
+        removals = set(frame.loc[frame["action"] == "remove", "instrument"])
+        metadata_unique = all(
+            frame[column].nunique(dropna=False) == 1
+            for column in (
+                "published_date",
+                "effective_from",
+                "event_type",
+                "confirmation_snapshot_date",
+                "source",
+            )
+        )
+        valid_change = (
+            not removals and bool(additions)
+            if event_type == "baseline_snapshot"
+            else bool(additions)
+            and len(additions) == len(removals)
+            and not additions.intersection(removals)
+            and event_type in {"regular", "temporary"}
+        )
+        if not metadata_unique or not valid_change:
+            malformed_events.append(
+                {
+                    "event_id": str(event_id),
+                    "event_type": event_type,
+                    "additions": len(additions),
+                    "removals": len(removals),
+                    "metadata_unique": metadata_unique,
+                }
+            )
+    checks.append(
+        QualityCheck(
+            "benchmark_membership_event_integrity",
+            duplicate_actions == 0
+            and invalid_actions == 0
+            and late_publications == 0
+            and non_open_events == 0
+            and unknown_confirmations == 0
+            and not malformed_events,
+            "error",
+            {
+                "events": int(normalized_events["event_id"].nunique()),
+                "duplicate_actions": duplicate_actions,
+                "invalid_actions": invalid_actions,
+                "published_after_effective": late_publications,
+                "non_open_effective_dates": non_open_events,
+                "unknown_confirmation_snapshots": unknown_confirmations,
+                "malformed_events": malformed_events[:20],
+            },
+        )
+    )
+
+    normalized_intervals["effective_to"] = normalized_intervals[
+        "effective_to"
+    ].fillna("").astype(str)
+    duplicate_intervals = int(
+        normalized_intervals.duplicated(["instrument", "effective_from"]).sum()
+    )
+    invalid_ranges = int(
+        (
+            normalized_intervals["effective_to"].ne("")
+            & (
+                normalized_intervals["effective_to"]
+                <= normalized_intervals["effective_from"]
+            )
+        ).sum()
+    )
+    future_entry_sources = int(
+        (
+            normalized_intervals["entry_published_date"]
+            > normalized_intervals["effective_from"]
+        ).sum()
+    )
+    event_ids = set(normalized_events["event_id"])
+    unknown_entry_events = int(
+        (~normalized_intervals["entry_event_id"].isin(event_ids)).sum()
+    )
+    exit_event_ids = normalized_intervals["exit_event_id"].dropna().astype(str)
+    unknown_exit_events = int((~exit_event_ids.isin(event_ids)).sum())
+    missing_sources = int(
+        normalized_intervals["entry_source"].str.strip().eq("").sum()
+    )
+    overlap_rows: list[dict[str, str]] = []
+    for instrument, frame in normalized_intervals.groupby("instrument", sort=True):
+        ordered = frame.sort_values("effective_from")
+        previous_to = ""
+        for position, row in enumerate(ordered.itertuples(index=False)):
+            current_from = str(row.effective_from)
+            if position > 0 and (not previous_to or previous_to > current_from):
+                overlap_rows.append(
+                    {"instrument": str(instrument), "effective_from": current_from}
+                )
+            previous_to = str(row.effective_to or "")
+    checks.append(
+        QualityCheck(
+            "benchmark_membership_interval_integrity",
+            duplicate_intervals == 0
+            and invalid_ranges == 0
+            and future_entry_sources == 0
+            and unknown_entry_events == 0
+            and unknown_exit_events == 0
+            and missing_sources == 0
+            and not overlap_rows,
+            "error",
+            {
+                "duplicate_intervals": duplicate_intervals,
+                "invalid_ranges": invalid_ranges,
+                "entry_source_after_effective": future_entry_sources,
+                "unknown_entry_events": unknown_entry_events,
+                "unknown_exit_events": unknown_exit_events,
+                "missing_entry_sources": missing_sources,
+                "overlap_sample": overlap_rows[:20],
+            },
+        )
+    )
+
+    expected_members = int(
+        weights.groupby("snapshot_date")["instrument"].nunique().mode().iloc[0]
+    )
+    event_transition_errors: list[dict[str, Any]] = []
+    for effective_from, frame in normalized_events.groupby(
+        "effective_from", sort=True
+    ):
+        date_position = bisect_left(open_dates, str(effective_from))
+        previous_date = open_dates[date_position - 1] if date_position > 0 else None
+        before = (
+            set(
+                active_membership_asof(normalized_intervals, previous_date)[
+                    "instrument"
+                ].astype(str)
+            )
+            if previous_date is not None
+            else set()
+        )
+        additions = set(frame.loc[frame["action"] == "add", "instrument"])
+        removals = set(frame.loc[frame["action"] == "remove", "instrument"])
+        expected = before.difference(removals).union(additions)
+        actual = set(
+            active_membership_asof(normalized_intervals, str(effective_from))[
+                "instrument"
+            ].astype(str)
+        )
+        if expected != actual or len(actual) != expected_members:
+            event_transition_errors.append(
+                {
+                    "effective_from": str(effective_from),
+                    "expected_members": len(expected),
+                    "actual_members": len(actual),
+                    "missing": sorted(expected.difference(actual))[:10],
+                    "extra": sorted(actual.difference(expected))[:10],
+                }
+            )
+    checks.append(
+        QualityCheck(
+            "benchmark_membership_event_transitions",
+            not event_transition_errors,
+            "error",
+            {
+                "effective_dates": int(
+                    normalized_events["effective_from"].nunique()
+                ),
+                "expected_members_per_date": expected_members,
+                "errors": event_transition_errors[:20],
+            },
+        )
+    )
+
+    snapshot_errors: list[dict[str, Any]] = []
+    for snapshot_date, frame in weights.groupby("snapshot_date", sort=True):
+        position = bisect_right(open_dates, str(snapshot_date))
+        if position >= len(open_dates):
+            continue
+        check_date = open_dates[position]
+        expected = set(frame["instrument"].astype(str))
+        actual = set(
+            active_membership_asof(normalized_intervals, check_date)[
+                "instrument"
+            ].astype(str)
+        )
+        if expected != actual:
+            snapshot_errors.append(
+                {
+                    "snapshot_date": str(snapshot_date),
+                    "check_date": check_date,
+                    "missing": sorted(expected.difference(actual))[:10],
+                    "extra": sorted(actual.difference(expected))[:10],
+                }
+            )
+    checks.append(
+        QualityCheck(
+            "benchmark_membership_snapshot_reconciliation",
+            not snapshot_errors,
+            "error",
+            {
+                "snapshots_checked": int(
+                    sum(
+                        bisect_right(open_dates, str(snapshot)) < len(open_dates)
+                        for snapshot in weights["snapshot_date"].astype(str).unique()
+                    )
+                ),
+                "errors": snapshot_errors[:20],
+            },
+        )
+    )
+    return checks
 
 
 def _classify_dynamic_missing(

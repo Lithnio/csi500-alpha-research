@@ -9,6 +9,7 @@ import pytest
 from csi500_alpha.config import AppConfig, DateSettings
 from csi500_alpha.data.client import FetchResult
 from csi500_alpha.data.downloader import SmokeDownloader, build_download_plan
+from csi500_alpha.data.normalize import normalize_index_bars
 from csi500_alpha.errors import DataQualityError
 
 
@@ -53,10 +54,27 @@ class FakeTushareClient:
                 ("000905.SH", instruments[1], "20250102", 50.0),
             ]
         elif api_name == "index_daily":
-            rows = [
-                ("000905.SH", date, 100.0, 101.0, 99.0, 100.5, 100.0, 1.0, 1.0)
-                for date in ("20250102", "20250103")
-            ]
+            code = str(params["ts_code"])
+            if code == "H00905.CSI":
+                rows = [
+                    (
+                        code,
+                        date,
+                        None,
+                        None,
+                        None,
+                        close,
+                        close - 1.0,
+                        None,
+                        None,
+                    )
+                    for date, close in (("20250102", 200.0), ("20250103", 204.0))
+                ]
+            else:
+                rows = [
+                    (code, date, 100.0, 101.0, 99.0, 100.0, 99.5, 1.0, 1.0)
+                    for date in ("20250102", "20250103")
+                ]
         elif api_name == "stock_basic" and params["list_status"] == "L":
             rows = [
                 (code, code[:6], code, "主板", "SZSE", "L", "20200101", None)
@@ -119,6 +137,31 @@ class FakeTushareClient:
         return pd.DataFrame(rows, columns=list(fields))
 
 
+def test_total_return_normalization_rejects_calendar_mismatch() -> None:
+    columns = [
+        "ts_code",
+        "trade_date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pre_close",
+        "vol",
+        "amount",
+    ]
+    price = pd.DataFrame(
+        [("000905.SH", "20250102", 100, 101, 99, 100, 99, 1, 1)],
+        columns=columns,
+    )
+    total_return = pd.DataFrame(
+        [("H00905.CSI", "20250103", None, None, None, 200, 199, None, None)],
+        columns=columns,
+    )
+
+    with pytest.raises(ValueError, match="dates differ"):
+        normalize_index_bars(price, total_return)
+
+
 def test_downloader_materializes_all_optional_silver_tables(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     base = AppConfig.from_yaml(root / "configs" / "smoke.yaml")
@@ -146,6 +189,8 @@ def test_downloader_materializes_all_optional_silver_tables(tmp_path: Path) -> N
     expected = {
         "calendar",
         "benchmark_weights",
+        "benchmark_membership_events",
+        "benchmark_membership_intervals",
         "index_bars",
         "stock_bars",
         "adjustments",
@@ -160,6 +205,12 @@ def test_downloader_materializes_all_optional_silver_tables(tmp_path: Path) -> N
     assert all(path.exists() for path in summary.paths.values())
     assert summary.rows["stock_bars"] == 4
     assert summary.rows["suspensions"] == 1
+    index_bars = pd.read_parquet(summary.paths["index_bars"])
+    assert index_bars["total_return_index_code"].unique().tolist() == [
+        "H00905.CSI"
+    ]
+    assert index_bars["benchmark_close"].tolist() == [200.0, 204.0]
+    assert index_bars["benchmark_open"].tolist() == [200.0, 204.0]
     assert summary.network_requests == len(client.calls)
     assert all(force for _, _, force in client.calls)
     assert [partition.partition_id for partition in summary.partitions] == ["2025"]
@@ -266,8 +317,18 @@ def test_downloader_reuses_validated_annual_partition(tmp_path: Path) -> None:
     first = SmokeDownloader(config, first_client).run(force=True)  # type: ignore[arg-type]
     assert first.partitions[0].status == "downloaded"
 
+    refreshed_reference_config = replace(
+        config,
+        download=replace(
+            config.download,
+            reference_cache_tag="refresh-without-daily-redownload",
+        ),
+    )
     second_client = FakeTushareClient()
-    second = SmokeDownloader(config, second_client).run()  # type: ignore[arg-type]
+    second = SmokeDownloader(  # type: ignore[arg-type]
+        refreshed_reference_config,
+        second_client,
+    ).run()
 
     assert second.partitions[0].status == "reused"
     daily_apis = {"daily", "adj_factor", "stk_limit", "daily_basic", "suspend_d"}

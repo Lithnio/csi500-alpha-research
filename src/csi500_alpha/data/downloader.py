@@ -10,6 +10,10 @@ from typing import Any
 import pandas as pd
 
 from csi500_alpha.config import AppConfig
+from csi500_alpha.data.benchmark import (
+    BENCHMARK_MEMBERSHIP_CONTRACT_VERSION,
+    materialize_benchmark_membership,
+)
 from csi500_alpha.data.client import TushareClient
 from csi500_alpha.data.normalize import (
     normalize_adjustments,
@@ -31,7 +35,8 @@ from csi500_alpha.utils import canonical_json, iter_months, sha256_file, sha256_
 
 LOGGER = logging.getLogger(__name__)
 
-DATA_CONTRACT_VERSION = "csi500-tushare-silver-v3"
+PARTITION_CONTRACT_VERSION = "csi500-tushare-silver-v3"
+SNAPSHOT_CONTRACT_VERSION = "csi500-tushare-silver-v5"
 RECOMMENDED_FREE_BYTES = 5 * 1024**3
 INDUSTRY_SUPPLEMENT_ESTIMATED_INSTRUMENTS = 250
 
@@ -150,7 +155,7 @@ def build_download_plan(config: AppConfig) -> DownloadPlan:
 
     estimated_business_days = len(pd.bdate_range(config.dates.raw_start, config.dates.end))
     monthly_weight_requests = sum(1 for _ in iter_months(config.dates.raw_start, config.dates.end))
-    reference_requests = 2 + monthly_weight_requests
+    reference_requests = 3 + monthly_weight_requests
     if config.download.include_instrument_master:
         reference_requests += 4
     if config.download.include_industry:
@@ -306,7 +311,7 @@ class SmokeDownloader:
         snapshot_contract_hash = sha256_text(
             canonical_json(
                 {
-                    "contract_version": DATA_CONTRACT_VERSION,
+                    "contract_version": SNAPSHOT_CONTRACT_VERSION,
                     "start_date": plan.start_date,
                     "end_date": plan.end_date,
                     "instrument_hash": instrument_hash,
@@ -318,7 +323,7 @@ class SmokeDownloader:
         snapshot = {
             "status": "success",
             "created_at": utc_now(),
-            "contract_version": DATA_CONTRACT_VERSION,
+            "contract_version": SNAPSHOT_CONTRACT_VERSION,
             "contract_hash": snapshot_contract_hash,
             "dataset": self.config.paths.dataset,
             "start_date": plan.start_date,
@@ -402,6 +407,10 @@ class SmokeDownloader:
         instruments = frozenset(weights["instrument"].astype(str))
         if not instruments:
             raise DataQualityError("No benchmark constituents were downloaded")
+        membership_events, membership_intervals = materialize_benchmark_membership(
+            weights,
+            calendar,
+        )
 
         index_raw = self._fetch(
             "index_daily",
@@ -424,11 +433,38 @@ class SmokeDownloader:
             force=force,
         )
         self._assert_not_at_limit("index_daily", index_raw, 8000)
-        index_bars = normalize_index_bars(index_raw)
+        total_return_index_raw = self._fetch(
+            "index_daily",
+            params={
+                "ts_code": cfg.source.total_return_index_code,
+                "start_date": cfg.dates.raw_start,
+                "end_date": cfg.dates.end,
+            },
+            fields=(
+                "ts_code",
+                "trade_date",
+                "open",
+                "high",
+                "low",
+                "close",
+                "pre_close",
+                "vol",
+                "amount",
+            ),
+            force=force,
+        )
+        self._assert_not_at_limit(
+            "index_daily[total_return]",
+            total_return_index_raw,
+            8000,
+        )
+        index_bars = normalize_index_bars(index_raw, total_return_index_raw)
 
         tables: dict[str, pd.DataFrame] = {
             "calendar": calendar,
             "benchmark_weights": weights,
+            "benchmark_membership_events": membership_events,
+            "benchmark_membership_intervals": membership_intervals,
             "index_bars": index_bars,
         }
         if cfg.download.include_instrument_master:
@@ -777,7 +813,7 @@ class SmokeDownloader:
             {
                 "status": "success",
                 "created_at": utc_now(),
-                "contract_version": DATA_CONTRACT_VERSION,
+                "contract_version": PARTITION_CONTRACT_VERSION,
                 "contract_hash": contract_hash,
                 **partition.to_dict(),
                 "open_dates": len(open_dates),
@@ -1063,11 +1099,11 @@ class SmokeDownloader:
         return sha256_text(
             canonical_json(
                 {
-                    "contract_version": DATA_CONTRACT_VERSION,
+                    "contract_version": PARTITION_CONTRACT_VERSION,
                     "partition": partition.to_dict(),
                     "instrument_hash": instrument_hash,
-                    "source": self._source_contract(),
-                    "download": asdict(self.config.download),
+                    "source": self._partition_source_contract(),
+                    "download": self._partition_download_contract(),
                     "tables": list(self._partition_table_names()),
                 }
             )
@@ -1078,12 +1114,34 @@ class SmokeDownloader:
             "vendor": "Tushare Pro",
             "exchange": self.config.source.exchange,
             "index_code": self.config.source.index_code,
+            "total_return_index_code": (
+                self.config.source.total_return_index_code
+            ),
+            "benchmark_membership_contract": (
+                BENCHMARK_MEMBERSHIP_CONTRACT_VERSION
+            ),
             "request_timeout_seconds": self.config.source.request_timeout_seconds,
             "calls_per_minute_limit": self.config.source.calls_per_minute_limit,
             "effective_min_request_interval_seconds": (
                 self.config.source.effective_min_request_interval_seconds
             ),
         }
+
+    def _partition_source_contract(self) -> dict[str, Any]:
+        """Preserve the v3 daily-partition identity while reference data evolves."""
+
+        source = self._source_contract().copy()
+        source.pop("total_return_index_code")
+        source.pop("benchmark_membership_contract")
+        return source
+
+    def _partition_download_contract(self) -> dict[str, Any]:
+        """Exclude reference-only refresh settings from daily partition identity."""
+
+        download = asdict(self.config.download)
+        download.pop("reference_cache_tag")
+        download.pop("eligibility_refresh_start")
+        return download
 
     @staticmethod
     def _failure_payload(exc: Exception) -> dict[str, str]:

@@ -12,11 +12,17 @@ from csi500_alpha.pipeline import (
     doctor,
     download_data,
     download_eligibility_data,
+    download_financial_data,
     download_smoke,
+    plan_annual_study,
     plan_data_download,
     plan_eligibility_download,
+    plan_factor_audit,
+    plan_financial_download,
     plan_portfolio_stress,
     plan_study,
+    run_annual_study,
+    run_factor_audit,
     run_portfolio_stress,
     run_research_workflow,
     run_smoke,
@@ -24,6 +30,7 @@ from csi500_alpha.pipeline import (
     validate_existing_smoke,
 )
 from csi500_alpha.reporting import build_public_report
+from csi500_alpha.v2_reporting import build_v2_readme_report
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_CONFIG = Path("configs/smoke.yaml")
@@ -94,6 +101,47 @@ def _parser() -> argparse.ArgumentParser:
         help="Refresh name/ST history only for constituents active from this date",
     )
 
+    plan_financial_parser = subparsers.add_parser(
+        "plan-financial",
+        help="Plan the point-in-time financial dataset without network access",
+    )
+    plan_financial_parser.add_argument(
+        "--spec",
+        type=Path,
+        default=Path("configs/financial_core.yaml"),
+    )
+
+    financial_parser = subparsers.add_parser(
+        "download-financial",
+        help="Download and validate resumable point-in-time financial statements",
+    )
+    financial_parser.add_argument(
+        "--spec",
+        type=Path,
+        default=Path("configs/financial_core.yaml"),
+    )
+    financial_parser.add_argument("--force", action="store_true")
+
+    plan_factor_audit_parser = subparsers.add_parser(
+        "plan-factor-audit",
+        help="Validate the model-free point-in-time factor audit without loading data",
+    )
+    plan_factor_audit_parser.add_argument(
+        "--spec",
+        type=Path,
+        default=Path("configs/factor_audit_v2.yaml"),
+    )
+
+    factor_audit_parser = subparsers.add_parser(
+        "run-factor-audit",
+        help="Run the offline point-in-time factor quality and return audit",
+    )
+    factor_audit_parser.add_argument(
+        "--spec",
+        type=Path,
+        default=Path("configs/factor_audit_v2.yaml"),
+    )
+
     validate_parser = subparsers.add_parser("validate-smoke", help="Validate silver smoke data")
     validate_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
 
@@ -142,6 +190,43 @@ def _parser() -> argparse.ArgumentParser:
         default=Path("configs/studies/core_baselines.yaml"),
     )
     study_parser.add_argument("--force", action="store_true")
+
+    plan_annual_parser = subparsers.add_parser(
+        "plan-annual-study",
+        help="Validate the candidate-by-year walk-forward matrix without fitting",
+    )
+    plan_annual_parser.add_argument(
+        "--annual",
+        type=Path,
+        default=Path("configs/annual/factor_family_v3_repair.yaml"),
+    )
+
+    annual_parser = subparsers.add_parser(
+        "run-annual-study",
+        help="Run or resume annual walk-forward folds with shared features",
+    )
+    annual_parser.add_argument(
+        "--annual",
+        type=Path,
+        default=Path("configs/annual/factor_family_v3_repair.yaml"),
+    )
+    annual_parser.add_argument("--force", action="store_true")
+    annual_parser.add_argument(
+        "--workers",
+        type=int,
+        help="Override the configured fold-level worker count",
+    )
+    annual_parser.add_argument(
+        "--year",
+        action="append",
+        type=int,
+        help="Run only this fold year; repeat to select multiple years",
+    )
+    annual_parser.add_argument(
+        "--trial",
+        action="append",
+        help="Run only this candidate id; repeat to select multiple candidates",
+    )
 
     plan_stress_parser = subparsers.add_parser(
         "plan-stress",
@@ -210,6 +295,40 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("docs/assets"),
     )
+
+    v2_report_parser = subparsers.add_parser(
+        "build-v2-readme-report",
+        help="Build fingerprinted aggregate figures for the v2 repository README",
+    )
+    v2_report_parser.add_argument(
+        "--baseline-root",
+        type=Path,
+        required=True,
+        help="Completed annual aggregate directory for the frozen baseline",
+    )
+    v2_report_parser.add_argument(
+        "--expanded-root",
+        type=Path,
+        required=True,
+        help="Completed annual aggregate directory for the expanded-pool ablation",
+    )
+    v2_report_parser.add_argument(
+        "--selection-root",
+        type=Path,
+        required=True,
+        help="Completed annual-study directory containing the final v2 selection",
+    )
+    v2_report_parser.add_argument(
+        "--factor-audit-root",
+        type=Path,
+        required=True,
+        help="Successful factor-audit run directory",
+    )
+    v2_report_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("docs/assets"),
+    )
     return parser
 
 
@@ -239,6 +358,14 @@ def main() -> None:
                 force=args.force,
                 refresh_names_from=args.refresh_names_from,
             ).to_dict()
+        elif args.command == "plan-financial":
+            payload = plan_financial_download(args.spec)
+        elif args.command == "download-financial":
+            payload = download_financial_data(args.spec, force=args.force).to_dict()
+        elif args.command == "plan-factor-audit":
+            payload = plan_factor_audit(args.spec)
+        elif args.command == "run-factor-audit":
+            payload = run_factor_audit(args.spec)
         elif args.command == "download-smoke":
             download_summary = download_smoke(args.config, force=args.force)
             payload = download_summary.to_dict()
@@ -259,6 +386,16 @@ def main() -> None:
             payload = plan_study(args.study)
         elif args.command == "run-study":
             payload = run_study(args.study, force=args.force).to_dict()
+        elif args.command == "plan-annual-study":
+            payload = plan_annual_study(args.annual)
+        elif args.command == "run-annual-study":
+            payload = run_annual_study(
+                args.annual,
+                force=args.force,
+                max_workers=args.workers,
+                years=args.year,
+                trial_ids=args.trial,
+            ).to_dict()
         elif args.command == "plan-stress":
             payload = plan_portfolio_stress(args.stress)
         elif args.command == "run-stress":
@@ -274,6 +411,14 @@ def main() -> None:
         elif args.command == "build-final-report":
             payload = build_final_holdout_report(
                 run_root=args.run_root,
+                output_root=args.output,
+            ).to_dict()
+        elif args.command == "build-v2-readme-report":
+            payload = build_v2_readme_report(
+                baseline_root=args.baseline_root,
+                expanded_root=args.expanded_root,
+                selection_root=args.selection_root,
+                factor_audit_root=args.factor_audit_root,
                 output_root=args.output,
             ).to_dict()
         else:

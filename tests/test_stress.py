@@ -16,6 +16,7 @@ from csi500_alpha.stress import (
     StressRunner,
     StressScenario,
     StressSpec,
+    replay_frozen_trade_costs,
     resolve_stress_config,
 )
 
@@ -27,13 +28,15 @@ def test_repository_stress_plan_is_bounded_and_resolves_one_way_changes() -> Non
     plan = plan_portfolio_stress(path)
     base = AppConfig.from_yaml(root / "configs" / "full.yaml")
 
-    assert spec.stress_id == "core-cost-capacity-v1"
-    assert plan["scenario_count"] == 7
+    assert spec.stress_id == "core-cost-capacity-v2"
+    assert plan["scenario_count"] == 9
     assert plan["source_study_id"] == "core-baselines-v3"
     assert [scenario.scenario_id for scenario in spec.scenarios] == [
         "baseline",
         "cost_0_5x",
         "cost_2_0x",
+        "cost_0_5x_frozen",
+        "cost_2_0x_frozen",
         "aum_50m",
         "aum_300m",
         "participation_10pct",
@@ -61,6 +64,54 @@ def test_repository_stress_plan_is_bounded_and_resolves_one_way_changes() -> Non
         larger_aum.optimizer.max_adv_participation
         == base.optimizer.max_adv_participation
     )
+
+
+def test_frozen_trade_cost_replay_is_monotonic_and_keeps_gross_trades() -> None:
+    dates = ["20250102", "20250103", "20250106"]
+    source_daily = pd.DataFrame(
+        {
+            "trade_date": dates,
+            "nav": [1.0, 1.01, 1.02],
+            "cash": [0.5, 0.4, 0.3],
+            "benchmark_nav": [1.0, 1.0, 1.0],
+            "transaction_cost": [0.0, 0.001, 0.002],
+            "turnover": [0.0, 0.2, 0.3],
+        }
+    )
+    source_trades = pd.DataFrame(
+        {
+            "trade_date": dates[1:],
+            "status": ["filled", "filled"],
+            "gross_value": [0.2, 0.3],
+            "linear_cost": [0.0005, 0.001],
+            "stamp_duty": [0.0003, 0.0005],
+            "impact_cost": [0.0002, 0.0005],
+        }
+    )
+
+    cheaper_daily, cheaper_trades = replay_frozen_trade_costs(
+        source_daily,
+        source_trades,
+        cost_multiplier=0.5,
+    )
+    dearer_daily, dearer_trades = replay_frozen_trade_costs(
+        source_daily,
+        source_trades,
+        cost_multiplier=2.0,
+    )
+
+    assert cheaper_daily["nav"].iloc[-1] == pytest.approx(1.0215)
+    assert dearer_daily["nav"].iloc[-1] == pytest.approx(1.017)
+    assert cheaper_daily["nav"].iloc[-1] > source_daily["nav"].iloc[-1]
+    assert source_daily["nav"].iloc[-1] > dearer_daily["nav"].iloc[-1]
+    pd.testing.assert_series_equal(
+        cheaper_trades["gross_value"],
+        source_trades["gross_value"],
+    )
+    assert dearer_trades["linear_cost"].sum() == pytest.approx(
+        source_trades["linear_cost"].sum() * 2.0
+    )
+    assert dearer_daily["active_nav"].iloc[-1] == pytest.approx(1.017)
 
 
 def test_stress_runner_records_failures_resumes_and_checks_baseline(tmp_path: Path) -> None:

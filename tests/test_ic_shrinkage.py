@@ -192,6 +192,83 @@ def test_correlation_and_refit_penalties_change_weights_in_expected_direction() 
     )
 
 
+def test_core_anchor_is_soft_and_reports_concentration_risk() -> None:
+    panel = _synthetic_panel()
+    directions = {"stable": 1, "diversifier": 1, "costly": 1}
+    base = replace(
+        _settings(),
+        shrinkage_enabled=False,
+        correlation_penalty=0.0,
+        cost_penalty=0.0,
+        weight_turnover_penalty=0.0,
+        max_factor_weight=1.0,
+    )
+    unconstrained = ICShrinkageAlphaModel(
+        directions=directions,
+        settings=base,
+    )
+    anchored = ICShrinkageAlphaModel(
+        directions=directions,
+        settings=replace(
+            base,
+            weight_change_norm="l1",
+            core_factors=("stable", "diversifier"),
+            core_anchor_mode="equal_factor",
+            core_anchor_penalty=2.0,
+        ),
+        name="core_ic_shrinkage",
+    )
+
+    unconstrained.fit(
+        panel,
+        tuple(directions),
+        label_column="forward_active_return",
+        as_of_date="20250101",
+    )
+    summary = anchored.fit(
+        panel,
+        tuple(directions),
+        label_column="forward_active_return",
+        as_of_date="20250101",
+    )
+
+    parameters = summary.parameters
+    assert anchored.name == "core_ic_shrinkage"
+    assert parameters["method"] == "core_anchored_empirical_bayes_ic_shrinkage"
+    assert parameters["previous_weight_source"] == "core_anchor_initialization"
+    assert parameters["core_anchor_weights"] == pytest.approx(
+        {"stable": 0.5, "diversifier": 0.5, "costly": 0.0}
+    )
+    assert 0.0 < parameters["candidate_weight"] < unconstrained.factor_weights[
+        "costly"
+    ]
+    assert parameters["core_weight"] + parameters["candidate_weight"] == pytest.approx(
+        1.0
+    )
+    assert sum(parameters["factor_risk_contributions"].values()) == pytest.approx(
+        1.0
+    )
+    assert parameters["maximum_factor_risk_contribution"] > 0.0
+    assert parameters["settings"]["max_factor_weight"] == 1.0
+
+
+def test_core_ic_shrinkage_registry_defaults_to_soft_anchor_without_tight_cap() -> None:
+    registry = default_component_registry()
+    model = registry.create_model(
+        "core_ic_shrinkage",
+        {
+            "core_factors": ["reversal_5d", "momentum_60_20"],
+            "core_anchor_mode": "equal_factor",
+        },
+        {"reversal_5d": 1, "momentum_60_20": 1},
+    )
+
+    assert model.name == "core_ic_shrinkage"
+    assert model.settings.max_factor_weight == 1.0
+    assert model.settings.core_anchor_penalty > 0.0
+    assert model.settings.weight_change_norm == "l1"
+
+
 def test_ic_shrinkage_ignores_future_rows_and_inherits_refit_state() -> None:
     panel = _synthetic_panel()
     as_of_date = "20250101"

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Sequence
 
 import numpy as np
 import pandas as pd
 
 from csi500_alpha.errors import InsufficientTrainingData
+from csi500_alpha.logging_utils import ProgressCallback, ProgressLogger
 from csi500_alpha.workflow.contracts import (
     AlphaModel,
     FactorSelector,
@@ -14,6 +16,8 @@ from csi500_alpha.workflow.contracts import (
     SignalEngineResult,
 )
 from csi500_alpha.workflow.samples import ResearchSamplePolicy
+
+LOGGER = logging.getLogger(__name__)
 
 
 class WalkForwardSignalEngine:
@@ -43,6 +47,7 @@ class WalkForwardSignalEngine:
         *,
         prediction_start: str,
         prediction_end: str,
+        progress_callback: ProgressCallback | None = None,
     ) -> SignalEngineResult:
         candidates = tuple(factor_names)
         self._validate_panel(panel, candidates)
@@ -63,6 +68,16 @@ class WalkForwardSignalEngine:
         current_training_rows = 0
         previous_phase: str | None = None
         phase_positions: dict[str, int] = {}
+        progress = (
+            ProgressLogger(
+                LOGGER,
+                stage="walk_forward_signals",
+                total=len(dates),
+                callback=progress_callback,
+            )
+            if dates
+            else None
+        )
 
         for position, decision_date in enumerate(dates):
             phase = (
@@ -94,6 +109,10 @@ class WalkForwardSignalEngine:
                     candidate_model.inherit_refit_state(current_model)
                 max_available = self._maximum_available_date(training)
                 try:
+                    if not selection.factor_names:
+                        raise InsufficientTrainingData(
+                            "Selector returned no factors with sufficient evidence"
+                        )
                     fit = candidate_model.fit(
                         training,
                         selection.factor_names,
@@ -141,16 +160,29 @@ class WalkForwardSignalEngine:
                         }
                     )
                 except InsufficientTrainingData as exc:
+                    selector_closed = not selection.factor_names
+                    previous_model_available = current_model is not None
+                    if selector_closed:
+                        current_model = None
+                        current_factors = ()
+                        current_fit_date = None
+                        current_training_rows = 0
                     fit_rows.append(
                         {
                             "fit_date": decision_date,
                             "experiment_phase": phase,
                             "selector": self.selector.name,
                             "model": candidate_model.name,
-                            "status": "insufficient_training_data",
+                            "status": (
+                                "no_selected_factors"
+                                if selector_closed
+                                else "insufficient_training_data"
+                            ),
                             "action": (
-                                "keep_previous_model"
-                                if current_model is not None
+                                "deactivate_model"
+                                if selector_closed
+                                else "keep_previous_model"
+                                if previous_model_available
                                 else "emit_missing_signal"
                             ),
                             "training_rows": len(training),
@@ -202,6 +234,14 @@ class WalkForwardSignalEngine:
                 )
             previous_phase = phase
             phase_positions[phase] = phase_position + 1
+            if progress is not None:
+                progress.update(
+                    position + 1,
+                    context={
+                        "decision_date": decision_date,
+                        "model_fits": len(fit_rows),
+                    },
+                )
 
         signal_columns = [
             "decision_date",

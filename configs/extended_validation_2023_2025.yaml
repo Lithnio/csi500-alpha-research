@@ -7,6 +7,7 @@ source:
   token_env: TUSHARE_TOKEN
   exchange: SSE
   index_code: 000905.SH
+  total_return_index_code: H00905.CSI
   max_attempts: 4
   request_timeout_seconds: 30.0
   backoff_base_seconds: 1.0
@@ -56,6 +57,10 @@ optimizer:
   turnover_cap: 0.35
   initial_turnover_cap: 1.0
   exposure_cap: 0.02
+  beta_constraint_enabled: true
+  beta_active_cap: 0.05
+  tracking_error_cap: 0.05
+  constraint_materiality_tolerance: 0.0001
   solvers: [CLARABEL, OSQP]
   feasibility_tolerance: 0.000001
   liquidity_enabled: true

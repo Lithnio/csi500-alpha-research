@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 
 import numpy as np
@@ -8,12 +9,15 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 
 from csi500_alpha.errors import ConfigurationError, InsufficientTrainingData
+from csi500_alpha.logging_utils import ProgressCallback, ProgressLogger
 from csi500_alpha.workflow.contracts import (
     CalibrationFitSummary,
     ReturnCalibrationResult,
     ReturnCalibrator,
 )
 from csi500_alpha.workflow.samples import ResearchSamplePolicy
+
+LOGGER = logging.getLogger(__name__)
 
 
 def robust_cross_section(scores: pd.Series, *, clip: float) -> pd.Series:
@@ -220,6 +224,7 @@ class WalkForwardReturnCalibrationEngine:
         *,
         prediction_start: str,
         prediction_end: str,
+        progress_callback: ProgressCallback | None = None,
     ) -> ReturnCalibrationResult:
         self._validate(signals, labels)
         history = signals.merge(
@@ -252,6 +257,16 @@ class WalkForwardReturnCalibrationEngine:
         current_training_rows = 0
         previous_phase: str | None = None
         phase_positions: dict[str, int] = {}
+        progress = (
+            ProgressLogger(
+                LOGGER,
+                stage="return_calibration",
+                total=len(dates),
+                callback=progress_callback,
+            )
+            if dates
+            else None
+        )
 
         for position, decision_date in enumerate(dates):
             phase = (
@@ -351,6 +366,14 @@ class WalkForwardReturnCalibrationEngine:
             output_rows.append(day)
             previous_phase = phase
             phase_positions[phase] = phase_position + 1
+            if progress is not None:
+                progress.update(
+                    position + 1,
+                    context={
+                        "calibration_fits": len(fit_rows),
+                        "decision_date": decision_date,
+                    },
+                )
 
         signal_columns = [
             *signals.columns,

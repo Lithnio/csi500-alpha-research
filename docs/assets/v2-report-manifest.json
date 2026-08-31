@@ -1,0 +1,78 @@
+{
+  "chart_map": {
+    "v2-backtest-overview.png": {
+      "fields": [
+        "trade_date",
+        "nav",
+        "benchmark_nav",
+        "active_nav"
+      ],
+      "question": "冻结方案在 2020—2025 年滚动年度研究折中的净值与主动回撤如何？",
+      "takeaway": "六个研究年度折累计主动收益为 9.76%，五个年度为正；该区间不是新的独立最终留出样本。",
+      "type": "three-panel line and drawdown chart"
+    },
+    "v2-factor-audit.png": {
+      "fields": [
+        "family",
+        "eligible",
+        "year",
+        "mean_q5_minus_q1_net"
+      ],
+      "question": "42 个候选因子的正式审计如何收缩因子池，证据是否随时间衰减？",
+      "takeaway": "14 个因子通过跨年覆盖率、IC 与净多空价差门槛；2025 年仅 7 个保持正净价差。",
+      "type": "family count bars and yearly evidence bars"
+    },
+    "v2-freeze-rationale.png": {
+      "fields": [
+        "year",
+        "annualized_active_return",
+        "increment_vs_baseline"
+      ],
+      "question": "备选因子扩展是否带来稳定的年度增量？",
+      "takeaway": "扩池提高全期汇总收益，但年度增量中位数为负，正主动收益年份由五个降至四个。",
+      "type": "paired annual bar charts"
+    }
+  },
+  "outputs": {
+    "v2-backtest-overview.png": "a1a6fbfd603cd70ec41abfeecfa58f61bb06f45b6c235b82e63b8a6553e297de",
+    "v2-factor-audit.png": "4abbfb0ae447bdd92846f4b94ada880488f422eece123d5756ec6171a2c9446a",
+    "v2-freeze-rationale.png": "3830d70248b1995c2b79969d14daeb448896a4d580daf61e22534dfee463bcbf",
+    "v2-public-summary.json": "4afed54c2fce1f8ea6b7f4460fcd9c330c99fa51f9161af9e64074cb5d6f87b0"
+  },
+  "public_boundary": "Aggregate metrics and raster figures only. Holdings, trades, signals, vendor rows, credentials and local paths are excluded.",
+  "schema_version": 2,
+  "source_artifacts": {
+    "comparison-baseline/aggregate-manifest.json": "5d7ae5734ae6a796a9890cedaf18f6cf3eba40c6da619fb034ac48812ca1213c",
+    "comparison-baseline/aggregate-summary.json": "d02e4725a9aff497b3f1b65f841672293daf3fced5ca81c933bf189f01af38a6",
+    "comparison-baseline/daily.parquet": "f8cc674e395d41b5d7ebabfbda572f9a8c12589da0cc9da41ac85cd0412ff8a4",
+    "comparison-baseline/yearly-metrics.parquet": "05b5136102be09dffa2de782d4368d0fd3d8bdcf8df8948bb3dc96f00c26512e",
+    "expanded/aggregate-manifest.json": "91c05381188f8d92ed5221950ab55f4cbbf9b8e0d9c54f4e95c3463c344ac274",
+    "expanded/aggregate-summary.json": "cdbd4c397fa27a0f63aced766a1ee185432664a45245f8847dadcd96bb315c44",
+    "expanded/yearly-metrics.parquet": "9175a3b9ceaee17b166dbb351ca16398d5c488c4d3dda06bcd444a346dca30cf",
+    "factor-audit/factor-audit-manifest.json": "954fd2ee3282a6331d304561fcebb41c9ea9ba279f382c74459e07f7095d49cf",
+    "factor-audit/factor-audit-summary.json": "5c9a8027187368b1efa8a1c9850660587c74276ec7a6b1957a18465e626c1276",
+    "factor-audit/factor-correlation.parquet": "36280dec3d3c4fdbb56298e94332a6790cf1dc84c90434825bff30d7dfa09b12",
+    "factor-audit/factor-summary.parquet": "ea3a2965486ac9a03eadffe437559fe7c776542039c398f9b48dd5aa2ce68985",
+    "factor-audit/yearly-audit.parquet": "d2461016e6ac0a8160f0c86e9b6938910156aa775c198ae14c32543cc844cc0e",
+    "selection/annual-study-manifest.json": "402ae25580a4717ee86a973e67d1d1440f71b2216b407eb97159aa709f60af00",
+    "selection/challenger/aggregate-manifest.json": "58f2592d8040f7fe1c65de02e58c102ab07cd0dbe72ab86ccaa641a7a0bbab13",
+    "selection/challenger/model-fits.parquet": "06e35643ed63ffd81c0f800920d3b5f6b754f8c7ffe88ab2698a11ede2b29c95",
+    "selection/progress.json": "ce9a749a7a382d7d27ebe915490e5e82abc282a8116bacf4f3d2ba900f64bda9",
+    "selection/publication-gates.json": "6244e31630cb47234cc644dbf8689484745d955049cd8116bc877ce7431805ff",
+    "selection/released/aggregate-manifest.json": "518010e20daa3f67ed7b65215c05bdf42f696e06b8e50470cf7978caca34fb26",
+    "selection/released/aggregate-summary.json": "2f1cbf178253039b5e960f088c0385bb3b3d145abd4471695d984b8192b04fa1",
+    "selection/released/daily.parquet": "f8cc674e395d41b5d7ebabfbda572f9a8c12589da0cc9da41ac85cd0412ff8a4",
+    "selection/released/yearly-metrics.parquet": "05b5136102be09dffa2de782d4368d0fd3d8bdcf8df8948bb3dc96f00c26512e",
+    "selection/selection.json": "337404609bb082edec9647efa8f9d920c073be5fb43a111dc486d6e42e35c9df"
+  },
+  "source_ids": {
+    "challenger_trial_id": "a32_turnover_budgeted_residual",
+    "comparison_annual_id": "a2-factor-expansion-v1-annual-2020-2025",
+    "comparison_baseline_trial_id": "a0_frozen_pool",
+    "expanded_trial_id": "a2_discovery_pool",
+    "factor_audit_id": "csi500-factor-audit-v2",
+    "factor_audit_run_id": "20260827T134438910394Z-csi500-factor-audit-v2-99b3c361",
+    "release_annual_id": "a32-turnover-budgeted-residual-v1-canonical-annual-2020-2025",
+    "released_trial_id": "a0_frozen_reference"
+  }
+}

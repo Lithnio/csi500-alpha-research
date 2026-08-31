@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from csi500_alpha.execution.backtest import calculate_backtest_metrics, fit_capm
+from csi500_alpha.portfolio.audit import summarize_constraint_audits
 
 
 @dataclass(frozen=True)
@@ -31,12 +34,34 @@ def evaluate_portfolio_run(
     *,
     daily: pd.DataFrame,
     trades: pd.DataFrame,
+    constraint_audits: pd.DataFrame | None = None,
 ) -> PortfolioEvaluation:
     yearly, yearly_metrics = _yearly_evaluation(daily, trades)
+    metrics = calculate_backtest_metrics(daily, trades)
+    performance_keys = (
+        "relative_active_total_return",
+        "annualized_active_return",
+        "annualized_active_mean",
+        "tracking_error",
+        "information_ratio",
+        "portfolio_max_drawdown",
+        "active_max_drawdown",
+        "capm_alpha_annualized",
+        "capm_beta",
+        "capm_beta_drag_annualized",
+        "capm_reconciliation_error",
+        "rolling_beta_abs_deviation_p95",
+    )
     return PortfolioEvaluation(
         summary={
+            "performance": {key: metrics[key] for key in performance_keys},
             "yearly": yearly,
             "execution": _execution_evaluation(daily, trades),
+            "constraints": summarize_constraint_audits(
+                constraint_audits
+                if constraint_audits is not None
+                else pd.DataFrame()
+            ),
         },
         yearly_metrics=yearly_metrics,
     )
@@ -48,6 +73,8 @@ def evaluate_research_run(
     labels: pd.DataFrame,
     daily: pd.DataFrame,
     trades: pd.DataFrame,
+    constraint_audits: pd.DataFrame | None = None,
+    optimization: pd.DataFrame | None = None,
     model_fits: pd.DataFrame,
     calibrator_name: str,
     calibrator_params: Mapping[str, Any],
@@ -62,19 +89,102 @@ def evaluate_research_run(
             calibrator_params,
         ),
     )
-    portfolio = evaluate_portfolio_run(daily=daily, trades=trades)
+    portfolio = evaluate_portfolio_run(
+        daily=daily,
+        trades=trades,
+        constraint_audits=constraint_audits,
+    )
     model_weights, factor_weight_history = _model_weight_evaluation(model_fits)
     return ResearchEvaluation(
         summary={
             "calibration": calibration,
+            "performance": portfolio.summary["performance"],
             "yearly": portfolio.summary["yearly"],
             "model_weights": model_weights,
             "execution": portfolio.summary["execution"],
+            "constraints": portfolio.summary["constraints"],
+            "risk": _risk_evaluation(
+                optimization if optimization is not None else pd.DataFrame()
+            ),
         },
         calibration_bins=calibration_bins,
         yearly_metrics=portfolio.yearly_metrics,
         factor_weight_history=factor_weight_history,
     )
+
+
+def _risk_evaluation(optimization: pd.DataFrame) -> dict[str, Any]:
+    """Summarize whether the configured risk and beta estimators actually ran."""
+
+    empty = {
+        "optimization_attempts": 0,
+        "risk_methods": {},
+        "beta_methods": {},
+        "factor_model_attempts": 0,
+        "factor_model_fallback_attempts": 0,
+        "factor_model_fallback_fraction": None,
+        "median_factor_count": None,
+        "minimum_beta_observed_fraction": None,
+        "maximum_beta_clip_fraction": None,
+        "median_factor_covariance_condition_number": None,
+    }
+    if optimization.empty:
+        return empty
+    if "risk_method" not in optimization:
+        return {**empty, "optimization_attempts": int(len(optimization))}
+
+    methods = optimization["risk_method"].astype("string").fillna("__MISSING__")
+    beta_methods = (
+        optimization["beta_method"].astype("string").fillna("__MISSING__")
+        if "beta_method" in optimization
+        else pd.Series("__MISSING__", index=optimization.index, dtype="string")
+    )
+    factor_attempt = methods.str.startswith("factor_ewma", na=False)
+    fallback = methods.str.startswith("factor_ewma_fallback", na=False)
+    if "risk_factor_model_fallback" in optimization:
+        explicit_fallback = optimization["risk_factor_model_fallback"].fillna(False)
+        fallback |= explicit_fallback.astype(bool)
+    factor_count = _finite_numeric(
+        optimization.get("risk_factor_count", pd.Series(dtype=float))
+    ).dropna()
+    beta_coverage = _finite_numeric(
+        optimization.get("risk_beta_observed_fraction", pd.Series(dtype=float))
+    ).dropna()
+    beta_clip = _finite_numeric(
+        optimization.get("risk_beta_clip_fraction", pd.Series(dtype=float))
+    ).dropna()
+    condition = _finite_numeric(
+        optimization.get(
+            "risk_factor_covariance_condition_number",
+            pd.Series(dtype=float),
+        )
+    ).dropna()
+    factor_attempt_count = int(factor_attempt.sum())
+    fallback_count = int((fallback & factor_attempt).sum())
+    return {
+        "optimization_attempts": int(len(optimization)),
+        "risk_methods": {
+            str(key): int(value)
+            for key, value in methods.value_counts(dropna=False).sort_index().items()
+        },
+        "beta_methods": {
+            str(key): int(value)
+            for key, value in beta_methods.value_counts(dropna=False).sort_index().items()
+        },
+        "factor_model_attempts": factor_attempt_count,
+        "factor_model_fallback_attempts": fallback_count,
+        "factor_model_fallback_fraction": (
+            float(fallback_count / factor_attempt_count)
+            if factor_attempt_count
+            else None
+        ),
+        "median_factor_count": _finite_or_none(factor_count.median()),
+        "minimum_beta_observed_fraction": _finite_or_none(beta_coverage.min()),
+        "maximum_beta_clip_fraction": _finite_or_none(beta_clip.max()),
+        "median_factor_covariance_condition_number": _finite_or_none(
+            condition.median()
+        ),
+    }
 
 
 def _calibration_evaluation(
@@ -257,7 +367,7 @@ def _yearly_evaluation(
     for year, frame in prepared.groupby("year", sort=True):
         portfolio = _finite_numeric(frame["portfolio_return"]).fillna(0.0)
         benchmark = _finite_numeric(frame["benchmark_return"]).fillna(0.0)
-        active = _finite_numeric(frame["active_return"]).dropna()
+        active = _finite_numeric(frame["active_return"]).fillna(0.0)
         portfolio_growth = float((1.0 + portfolio).prod())
         benchmark_growth = float((1.0 + benchmark).prod())
         active_total = (
@@ -268,15 +378,35 @@ def _yearly_evaluation(
         tracking_error = (
             float(active.std(ddof=1) * np.sqrt(252.0)) if len(active) > 1 else np.nan
         )
-        annualized_active = float(active.mean() * 252.0) if len(active) else np.nan
+        active_growth = float((1.0 + active).prod())
+        annualized_active_mean = (
+            float(active.mean() * 252.0) if len(active) else np.nan
+        )
+        annualized_active = (
+            active_growth ** (252.0 / len(active)) - 1.0
+            if len(active) and active_growth > 0
+            else np.nan
+        )
         information_ratio = (
-            annualized_active / tracking_error
+            annualized_active_mean / tracking_error
             if np.isfinite(tracking_error) and tracking_error > 0
             else np.nan
         )
         wealth = (1.0 + portfolio).cumprod()
-        drawdown = wealth / wealth.cummax() - 1.0
+        portfolio_drawdown = wealth / wealth.cummax() - 1.0
+        active_wealth = (1.0 + active).cumprod()
+        active_drawdown = active_wealth / active_wealth.cummax() - 1.0
+        capm_alpha_daily, capm_beta = fit_capm(portfolio, benchmark)
+        capm_alpha_annualized = capm_alpha_daily * 252.0
+        capm_beta_drag = (
+            (capm_beta - 1.0) * float(benchmark.mean()) * 252.0
+            if np.isfinite(capm_beta)
+            else np.nan
+        )
         observations = len(frame)
+        active_max_drawdown = (
+            float(active_drawdown.min()) if not active_drawdown.empty else np.nan
+        )
         rows.append(
             {
                 "year": str(year),
@@ -292,9 +422,28 @@ def _yearly_evaluation(
                     else np.nan
                 ),
                 "annualized_active_return": annualized_active,
+                "annualized_active_mean": annualized_active_mean,
                 "tracking_error": tracking_error,
                 "information_ratio": information_ratio,
-                "max_drawdown": float(drawdown.min()) if not drawdown.empty else np.nan,
+                "portfolio_max_drawdown": (
+                    float(portfolio_drawdown.min())
+                    if not portfolio_drawdown.empty
+                    else np.nan
+                ),
+                "active_max_drawdown": active_max_drawdown,
+                "max_drawdown": active_max_drawdown,
+                "capm_alpha_annualized": capm_alpha_annualized,
+                "capm_beta": capm_beta,
+                "capm_beta_drag_annualized": capm_beta_drag,
+                "capm_reconciliation_error": (
+                    annualized_active_mean
+                    - capm_alpha_annualized
+                    - capm_beta_drag
+                    if np.isfinite(annualized_active_mean)
+                    and np.isfinite(capm_alpha_annualized)
+                    and np.isfinite(capm_beta_drag)
+                    else np.nan
+                ),
                 "average_turnover": float(
                     _finite_numeric(frame["turnover"]).fillna(0.0).mean()
                 ),
@@ -311,9 +460,16 @@ def _yearly_evaluation(
         "active_total_return",
         "annualized_return",
         "annualized_active_return",
+        "annualized_active_mean",
         "tracking_error",
         "information_ratio",
+        "portfolio_max_drawdown",
+        "active_max_drawdown",
         "max_drawdown",
+        "capm_alpha_annualized",
+        "capm_beta",
+        "capm_beta_drag_annualized",
+        "capm_reconciliation_error",
         "average_turnover",
         "transaction_cost",
     ]
@@ -329,6 +485,8 @@ def _yearly_evaluation(
             "positive_active_year_fraction": (
                 float((finite_active > 0).mean()) if len(finite_active) else None
             ),
+            "minimum_active_total_return": _finite_or_none(finite_active.min()),
+            "median_active_total_return": _finite_or_none(finite_active.median()),
             "minimum_information_ratio": _finite_or_none(finite_ir.min()),
             "median_information_ratio": _finite_or_none(finite_ir.median()),
             "information_ratio_dispersion": _finite_or_none(
@@ -336,7 +494,17 @@ def _yearly_evaluation(
             ),
             "worst_max_drawdown": _finite_or_none(
                 _finite_numeric(
-                    yearly.get("max_drawdown", pd.Series(dtype=float))
+                    yearly.get("active_max_drawdown", pd.Series(dtype=float))
+                ).min()
+            ),
+            "worst_active_max_drawdown": _finite_or_none(
+                _finite_numeric(
+                    yearly.get("active_max_drawdown", pd.Series(dtype=float))
+                ).min()
+            ),
+            "worst_portfolio_max_drawdown": _finite_or_none(
+                _finite_numeric(
+                    yearly.get("portfolio_max_drawdown", pd.Series(dtype=float))
                 ).min()
             ),
             "minimum_year_observations": (
@@ -354,6 +522,7 @@ def _model_weight_evaluation(
         "fit_date",
         "model",
         "factor",
+        "family",
         "weight_source",
         "raw_parameter",
         "allocation_weight",
@@ -423,9 +592,38 @@ def _model_weight_evaluation(
             if max_factor_weight is not None
             else 0
         )
-        is_p3 = parameters.get("method") == (
-            "empirical_bayes_ic_shrinkage_convex_synthesis"
+        raw_family_weights = parameters.get("family_weights")
+        family_weights = (
+            {
+                str(name): value
+                for name, raw_value in raw_family_weights.items()
+                if (value := _finite_number(raw_value)) is not None
+            }
+            if isinstance(raw_family_weights, Mapping)
+            else {}
         )
+        max_family_weight = (
+            _finite_number(settings.get("max_family_weight"))
+            if isinstance(settings, Mapping)
+            else None
+        )
+        family_cap_hits = (
+            sum(
+                value >= max_family_weight - 1e-6
+                for value in family_weights.values()
+            )
+            if max_family_weight is not None
+            else 0
+        )
+        maximum_family_weight = (
+            max(family_weights.values()) if family_weights else np.nan
+        )
+        is_p3 = parameters.get("method") in {
+            "empirical_bayes_ic_shrinkage_convex_synthesis",
+            "core_anchored_empirical_bayes_ic_shrinkage",
+            "oof_net_residual_sleeve_blend",
+            "turnover_budgeted_residual_sleeve_blend",
+        }
         p3_fit_count += int(is_p3)
         fit_diagnostics.append(
             {
@@ -434,10 +632,13 @@ def _model_weight_evaluation(
                 "maximum_weight": max(allocation.values()),
                 "factor_weight_l1_change": factor_change,
                 "cap_hits": float(cap_hits),
+                "maximum_family_weight": maximum_family_weight,
+                "family_cap_hits": float(family_cap_hits),
             }
         )
         factor_statistics = parameters.get("factor_statistics")
         statistics = factor_statistics if isinstance(factor_statistics, Mapping) else {}
+        family_by_factor = _family_by_factor(parameters.get("family_factors"))
         for factor, raw_value in raw_weights.items():
             raw_statistics = statistics.get(factor, {})
             factor_stats = raw_statistics if isinstance(raw_statistics, Mapping) else {}
@@ -447,6 +648,7 @@ def _model_weight_evaluation(
                     "fit_date": str(fit["fit_date"]),
                     "model": str(fit["model"]),
                     "factor": factor,
+                    "family": family_by_factor.get(factor),
                     "weight_source": source_name,
                     "raw_parameter": raw_value,
                     "allocation_weight": allocation[factor],
@@ -489,6 +691,9 @@ def _model_weight_evaluation(
             "maximum_single_factor_weight": float(
                 diagnostics["maximum_weight"].max()
             ),
+            "maximum_family_weight": _finite_or_none(
+                diagnostics["maximum_family_weight"].max()
+            ),
             "mean_factor_weight_l1_change": float(
                 diagnostics["factor_weight_l1_change"].mean()
             ),
@@ -496,6 +701,7 @@ def _model_weight_evaluation(
                 diagnostics["factor_weight_l1_change"].max()
             ),
             "factor_cap_hits": int(diagnostics["cap_hits"].sum()),
+            "family_cap_hits": int(diagnostics["family_cap_hits"].sum()),
         },
         history,
     )
@@ -665,7 +871,7 @@ def _expected_return_bound(
 
 
 def _weight_mapping(parameters: Mapping[str, Any]) -> tuple[str, dict[str, float]]:
-    for name in ("weights", "coefficients"):
+    for name in ("factor_weights", "weights", "coefficients"):
         raw = parameters.get(name)
         if not isinstance(raw, Mapping):
             continue
@@ -676,6 +882,17 @@ def _weight_mapping(parameters: Mapping[str, Any]) -> tuple[str, dict[str, float
         }
         return name, converted
     return "", {}
+
+
+def _family_by_factor(value: Any) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(factor): str(family)
+        for family, raw_factors in value.items()
+        if isinstance(raw_factors, Sequence) and not isinstance(raw_factors, str)
+        for factor in raw_factors
+    }
 
 
 def _parameter_mapping(value: Any) -> Mapping[str, Any]:
@@ -697,9 +914,11 @@ def _empty_weight_summary() -> dict[str, Any]:
         "minimum_effective_factor_count": None,
         "mean_weight_concentration": None,
         "maximum_single_factor_weight": None,
+        "maximum_family_weight": None,
         "mean_factor_weight_l1_change": None,
         "maximum_factor_weight_l1_change": None,
         "factor_cap_hits": 0,
+        "family_cap_hits": 0,
     }
 
 

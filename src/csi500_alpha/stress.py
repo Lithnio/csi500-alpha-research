@@ -14,14 +14,31 @@ import yaml
 from csi500_alpha.config import AppConfig
 from csi500_alpha.data.storage import write_json_atomic, write_parquet_atomic
 from csi500_alpha.errors import ConfigurationError
+from csi500_alpha.execution.backtest import enrich_active_performance
 from csi500_alpha.utils import canonical_json, sha256_text, utc_now
 
 _SUMMARY_PATHS = (
     "metrics.information_ratio",
     "metrics.max_drawdown",
+    "metrics.active_max_drawdown",
+    "metrics.portfolio_max_drawdown",
     "metrics.average_turnover",
     "metrics.annualized_active_return",
     "metrics.transaction_cost",
+    "metrics.target_configured_breach_fraction",
+    "metrics.post_trade_configured_breach_fraction",
+    "metrics.post_trade_policy_violation_fraction",
+    "metrics.post_trade_material_configured_breach_fraction",
+    "metrics.post_trade_material_policy_violation_fraction",
+    "metrics.post_trade_material_execution_deterioration_fraction",
+    "metrics.maximum_target_configured_constraint_breach",
+    "metrics.maximum_post_trade_policy_violation",
+    "metrics.maximum_execution_constraint_deterioration",
+    "metrics.maximum_post_trade_active_beta_deviation",
+    "metrics.maximum_post_trade_industry_active_exposure",
+    "metrics.maximum_post_trade_tracking_error",
+    "metrics.p95_actual_active_risk_utilization",
+    "metrics.beta_audit_complete_fraction",
     "evaluation.yearly.minimum_information_ratio",
     "evaluation.yearly.positive_active_year_fraction",
     "evaluation.execution.notional_fill_ratio",
@@ -36,6 +53,7 @@ _SUMMARY_PATHS = (
 class StressScenario:
     scenario_id: str
     purpose: str
+    execution_mode: str = "reoptimized"
     cost_multiplier: float = 1.0
     portfolio_aum_cny: float | None = None
     max_adv_participation: float | None = None
@@ -44,6 +62,7 @@ class StressScenario:
         return {
             "id": self.scenario_id,
             "purpose": self.purpose,
+            "execution_mode": self.execution_mode,
             "cost_multiplier": self.cost_multiplier,
             "portfolio_aum_cny": self.portfolio_aum_cny,
             "max_adv_participation": self.max_adv_participation,
@@ -401,6 +420,7 @@ class StressRunner:
                 "stress_id": self.spec.stress_id,
                 "scenario_id": str(scenario.get("id", "")),
                 "purpose": str(scenario.get("purpose", "")),
+                "execution_mode": scenario.get("execution_mode"),
                 "cost_multiplier": scenario.get("cost_multiplier"),
                 "portfolio_aum_cny": scenario.get("portfolio_aum_cny"),
                 "max_adv_participation": scenario.get("max_adv_participation"),
@@ -513,6 +533,94 @@ def resolve_stress_config(base: AppConfig, scenario: StressScenario) -> AppConfi
     return resolved
 
 
+def replay_frozen_trade_costs(
+    daily: pd.DataFrame,
+    trades: pd.DataFrame,
+    *,
+    cost_multiplier: float,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Replay identical gross trades while changing only modeled cash costs.
+
+    Holdings and gross trade values remain fixed.  With a zero cash return, the
+    counterfactual NAV differs from the source NAV by the cumulative change in
+    linear, stamp-duty and impact costs.
+    """
+
+    if not np.isfinite(cost_multiplier) or cost_multiplier <= 0:
+        raise ValueError("cost_multiplier must be finite and positive")
+    required_daily = {
+        "trade_date",
+        "nav",
+        "benchmark_nav",
+        "transaction_cost",
+    }
+    required_trades = {
+        "trade_date",
+        "linear_cost",
+        "stamp_duty",
+        "impact_cost",
+    }
+    missing_daily = sorted(required_daily.difference(daily.columns))
+    missing_trades = sorted(required_trades.difference(trades.columns))
+    if missing_daily or missing_trades:
+        raise ValueError(
+            "Frozen-trade replay inputs are incomplete: "
+            f"daily={missing_daily}, trades={missing_trades}"
+        )
+
+    replay_trades = trades.copy()
+    cost_columns = ("linear_cost", "stamp_duty", "impact_cost")
+    for column in cost_columns:
+        replay_trades[column] = (
+            pd.to_numeric(replay_trades[column], errors="raise").astype(float)
+            * cost_multiplier
+        )
+
+    source_cost_by_date = (
+        trades.assign(
+            _total_cost=sum(
+                (
+                    pd.to_numeric(trades[column], errors="raise").astype(float)
+                    for column in cost_columns
+                ),
+                start=pd.Series(0.0, index=trades.index),
+            )
+        )
+        .groupby("trade_date")["_total_cost"]
+        .sum()
+    )
+    replay = daily.copy()
+    recorded_cost = pd.to_numeric(
+        replay["transaction_cost"],
+        errors="raise",
+    ).astype(float)
+    trade_cost = replay["trade_date"].map(source_cost_by_date).fillna(0.0)
+    if not np.allclose(recorded_cost, trade_cost, rtol=1e-10, atol=1e-12):
+        maximum_difference = float((recorded_cost - trade_cost).abs().max())
+        raise ValueError(
+            "Daily and trade-level source costs do not reconcile: "
+            f"maximum_difference={maximum_difference}"
+        )
+
+    scenario_cost = recorded_cost * cost_multiplier
+    cumulative_cost_delta = (scenario_cost - recorded_cost).cumsum()
+    replay["nav"] = (
+        pd.to_numeric(replay["nav"], errors="raise").astype(float)
+        - cumulative_cost_delta
+    )
+    if (replay["nav"] <= 0).any() or not np.isfinite(replay["nav"]).all():
+        raise ValueError("Frozen-trade cost replay exhausted portfolio NAV")
+    if "cash" in replay:
+        replay["cash"] = (
+            pd.to_numeric(replay["cash"], errors="raise").astype(float)
+            - cumulative_cost_delta
+        )
+    replay["transaction_cost"] = scenario_cost
+    replay["cost_replay_cumulative_delta"] = cumulative_cost_delta
+    replay["cost_replay_mode"] = "frozen_trades"
+    return enrich_active_performance(replay), replay_trades
+
+
 def stress_plan(config_path: str | Path) -> dict[str, Any]:
     spec = StressSpec.from_yaml(config_path)
     return {
@@ -532,6 +640,7 @@ def _scenario(value: Any, position: int) -> StressScenario:
         {
             "id",
             "purpose",
+            "execution_mode",
             "cost_multiplier",
             "portfolio_aum_cny",
             "max_adv_participation",
@@ -543,6 +652,11 @@ def _scenario(value: Any, position: int) -> StressScenario:
     if not purpose:
         raise ConfigurationError(f"{section}.purpose cannot be empty")
     cost_multiplier = float(mapping.get("cost_multiplier", 1.0))
+    execution_mode = str(mapping.get("execution_mode", "reoptimized"))
+    if execution_mode not in {"reoptimized", "frozen_trades"}:
+        raise ConfigurationError(
+            f"{section}.execution_mode must be 'reoptimized' or 'frozen_trades'"
+        )
     aum = _optional_positive(mapping.get("portfolio_aum_cny"), f"{section}.portfolio_aum_cny")
     participation = _optional_positive(
         mapping.get("max_adv_participation"),
@@ -554,9 +668,16 @@ def _scenario(value: Any, position: int) -> StressScenario:
         raise ConfigurationError(
             f"{section}.max_adv_participation must be at most 1"
         )
+    if execution_mode == "frozen_trades" and (
+        aum is not None or participation is not None
+    ):
+        raise ConfigurationError(
+            f"{section} frozen-trade replay can change costs only"
+        )
     return StressScenario(
         scenario_id=scenario_id,
         purpose=purpose,
+        execution_mode=execution_mode,
         cost_multiplier=cost_multiplier,
         portfolio_aum_cny=aum,
         max_adv_participation=participation,

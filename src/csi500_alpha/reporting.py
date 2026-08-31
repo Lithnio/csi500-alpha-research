@@ -30,9 +30,11 @@ _ABLATION_LABELS = {
 }
 
 _STRESS_LABELS = {
-    "cost_0_5x": "成本 0.5 倍",
     "baseline": "基准情景",
-    "cost_2_0x": "成本 2.0 倍",
+    "cost_0_5x_frozen": "成本 0.5 倍（固定交易）",
+    "cost_2_0x_frozen": "成本 2.0 倍（固定交易）",
+    "cost_0_5x": "成本 0.5 倍（重新优化）",
+    "cost_2_0x": "成本 2.0 倍（重新优化）",
     "aum_50m": "规模 0.5 亿元",
     "aum_300m": "规模 3 亿元",
     "participation_10pct": "ADV 上限 10%",
@@ -140,22 +142,30 @@ def build_public_report(
             "fields": ["trial_id", "information_ratio", "mean_factor_weight_l1_change"],
         },
         "backtest-overview.png": {
-            "title": "Selected method NAV and drawdown",
+            "title": "Selected method NAV and active drawdown",
             "scope": _EVALUATION_ROLES[evaluation_role],
-            "note": "Portfolio and benchmark paths are shown net of modeled costs.",
+            "note": (
+                "Portfolio and total-return benchmark paths are shown in the upper "
+                "panel; the lower panel is drawdown of their relative wealth."
+            ),
             "type": "two-panel line and drawdown chart",
-            "fields": ["trade_date", "nav", "benchmark_nav"],
+            "fields": ["trade_date", "nav", "benchmark_nav", "active_nav"],
         },
         "stress-analysis.png": {
             "title": "Cost and capacity stress",
-            "scope": "selected signals fixed; risk, optimization and execution rerun",
+            "scope": (
+                "selected signals fixed; cost-only frozen-trade replay is separated "
+                "from portfolio reoptimization"
+            ),
             "note": (
-                "Cost settings affect both optimizer turnover and simulated execution "
-                "cost; information ratio is therefore not mechanically monotonic."
+                "Frozen-trade cases isolate the arithmetic cost effect. Reoptimized "
+                "cases also change turnover, so their information ratio is not "
+                "mechanically monotonic."
             ),
             "type": "paired dot plots with baseline references",
             "fields": [
                 "scenario_id",
+                "execution_mode",
                 "information_ratio",
                 "cost_bps_of_executed_notional",
             ],
@@ -366,6 +376,9 @@ def _load_stress(
             {
                 "scenario_id": scenario_id,
                 "label": _STRESS_LABELS.get(scenario_id, scenario_id),
+                "execution_mode": str(
+                    scenario.get("execution_mode", "reoptimized")
+                ),
                 "information_ratio": _finite(metrics.get("information_ratio"), "IR"),
                 "minimum_year_information_ratio": _finite(
                     yearly.get("minimum_information_ratio"),
@@ -376,6 +389,14 @@ def _load_stress(
                     "annualized active return",
                 ),
                 "max_drawdown": _finite(metrics.get("max_drawdown"), "max drawdown"),
+                "active_max_drawdown": _finite(
+                    metrics.get("active_max_drawdown", metrics.get("max_drawdown")),
+                    "active max drawdown",
+                ),
+                "portfolio_max_drawdown": _finite(
+                    metrics.get("portfolio_max_drawdown", metrics.get("max_drawdown")),
+                    "portfolio max drawdown",
+                ),
                 "average_turnover": _finite(
                     metrics.get("average_turnover"),
                     "average turnover",
@@ -391,6 +412,18 @@ def _load_stress(
                 "optimizer_solve_rate": _finite(
                     scenario_summary.get("optimizer_solve_rate"),
                     "optimizer solve rate",
+                ),
+                "post_trade_policy_violation_fraction": _finite(
+                    metrics.get("post_trade_policy_violation_fraction"),
+                    "post-trade policy violation fraction",
+                ),
+                "maximum_post_trade_active_beta_deviation": _finite(
+                    metrics.get("maximum_post_trade_active_beta_deviation"),
+                    "maximum post-trade active beta deviation",
+                ),
+                "beta_audit_complete_fraction": _finite(
+                    metrics.get("beta_audit_complete_fraction"),
+                    "beta audit complete fraction",
                 ),
             }
         )
@@ -440,16 +473,28 @@ def _public_summary(
     stress_rows = [
         {
             "scenario_id": str(row.scenario_id),
+            "execution_mode": str(row.execution_mode),
             "information_ratio": float(row.information_ratio),
             "minimum_year_information_ratio": float(row.minimum_year_information_ratio),
             "annualized_active_return": float(row.annualized_active_return),
             "max_drawdown": float(row.max_drawdown),
+            "active_max_drawdown": float(row.active_max_drawdown),
+            "portfolio_max_drawdown": float(row.portfolio_max_drawdown),
             "average_turnover": float(row.average_turnover),
             "notional_fill_ratio": float(row.notional_fill_ratio),
             "cost_bps_of_executed_notional": float(
                 row.cost_bps_of_executed_notional
             ),
             "optimizer_solve_rate": float(row.optimizer_solve_rate),
+            "post_trade_policy_violation_fraction": float(
+                row.post_trade_policy_violation_fraction
+            ),
+            "maximum_post_trade_active_beta_deviation": float(
+                row.maximum_post_trade_active_beta_deviation
+            ),
+            "beta_audit_complete_fraction": float(
+                row.beta_audit_complete_fraction
+            ),
         }
         for row in evidence.stress.itertuples(index=False)
     ]
@@ -494,11 +539,50 @@ def _public_summary(
                 metrics.get("annualized_active_return"),
                 "annualized active return",
             ),
+            "relative_active_total_return": _finite(
+                metrics.get("relative_active_total_return"),
+                "relative active total return",
+            ),
             "information_ratio": _finite(
                 metrics.get("information_ratio"),
                 "information ratio",
             ),
             "max_drawdown": _finite(metrics.get("max_drawdown"), "max drawdown"),
+            "active_max_drawdown": _finite(
+                metrics.get("active_max_drawdown", metrics.get("max_drawdown")),
+                "active max drawdown",
+            ),
+            "portfolio_max_drawdown": _finite(
+                metrics.get("portfolio_max_drawdown", metrics.get("max_drawdown")),
+                "portfolio max drawdown",
+            ),
+            "capm_alpha_annualized": _finite(
+                metrics.get("capm_alpha_annualized"),
+                "CAPM alpha",
+            ),
+            "capm_beta": _finite(metrics.get("capm_beta"), "CAPM beta"),
+            "post_trade_audit_count": int(
+                _finite(
+                    metrics.get("post_trade_audit_count"),
+                    "post-trade audit count",
+                )
+            ),
+            "maximum_post_trade_active_beta_deviation": _finite(
+                metrics.get("maximum_post_trade_active_beta_deviation"),
+                "maximum post-trade active beta deviation",
+            ),
+            "maximum_post_trade_industry_active_exposure": _finite(
+                metrics.get("maximum_post_trade_industry_active_exposure"),
+                "maximum post-trade industry active exposure",
+            ),
+            "post_trade_policy_violation_fraction": _finite(
+                metrics.get("post_trade_policy_violation_fraction"),
+                "post-trade policy violation fraction",
+            ),
+            "beta_audit_complete_fraction": _finite(
+                metrics.get("beta_audit_complete_fraction"),
+                "beta audit complete fraction",
+            ),
             "average_turnover": _finite(
                 metrics.get("average_turnover"),
                 "average turnover",
@@ -674,8 +758,10 @@ def _plot_backtest(
     dates = pd.to_datetime(daily["trade_date"], format="%Y%m%d")
     nav = pd.to_numeric(daily["nav"], errors="raise").astype(float)
     benchmark = pd.to_numeric(daily["benchmark_nav"], errors="raise").astype(float)
-    portfolio_drawdown = nav / nav.cummax() - 1.0
-    benchmark_drawdown = benchmark / benchmark.cummax() - 1.0
+    active_nav = (nav / float(nav.iloc[0])) / (
+        benchmark / float(benchmark.iloc[0])
+    )
+    active_drawdown = active_nav / active_nav.cummax() - 1.0
     summary = _as_mapping(selected_trial.get("summary"), "Selected summary")
     metrics = _as_mapping(summary.get("metrics"), "Selected metrics")
 
@@ -702,23 +788,21 @@ def _plot_backtest(
 
     axes[1].fill_between(
         dates,
-        portfolio_drawdown,
+        active_drawdown,
         0.0,
         color=_BLUE_OPEN,
         edgecolor="none",
-        label="组合回撤",
+        label="主动回撤",
     )
     axes[1].plot(
         dates,
-        benchmark_drawdown,
-        color=_INK,
+        active_drawdown,
+        color=_BLUE,
         linewidth=1.2,
-        linestyle="--",
-        label="基准回撤",
     )
-    axes[1].set_ylabel("回撤")
+    axes[1].set_ylabel("主动回撤")
     axes[1].yaxis.set_major_formatter(pyplot.FuncFormatter(lambda value, _: f"{value:.0%}"))
-    axes[1].legend(loc="lower left", frameon=False, ncols=2)
+    axes[1].legend(loc="lower left", frameon=False)
     axes[1].grid(axis="y", color=_GRID, linewidth=0.8)
     locator = mdates.AutoDateLocator(minticks=6, maxticks=10)
     axes[1].xaxis.set_major_locator(locator)
@@ -830,7 +914,7 @@ def _plot_stress(pyplot: Any, frame: pd.DataFrame, path: Path) -> None:
     fig.text(
         0.07,
         0.900,
-        "固定预测信号，仅重新估计风险、组合优化与模拟执行；虚线为基准情景",
+        "固定交易隔离成本算术效应；重新优化情景同时反映换手响应；虚线为基准情景",
         ha="left",
         color=_MUTED,
         fontsize=9,
@@ -839,8 +923,8 @@ def _plot_stress(pyplot: Any, frame: pd.DataFrame, path: Path) -> None:
         0.07,
         0.025,
         (
-            "注：成本倍数同时作用于优化惩罚与模拟成交成本；基准情景为 1 亿元规模、"
-            "5% ADV 上限。资料来源：Tushare Pro，本项目计算。"
+            "注：固定交易情景仅缩放成交成本；重新优化情景同步调整优化惩罚与成交成本；"
+            "基准情景为 1 亿元规模、5% ADV 上限。资料来源：Tushare Pro，本项目计算。"
         ),
         ha="left",
         color=_MUTED,

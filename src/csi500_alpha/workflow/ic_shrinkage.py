@@ -28,6 +28,10 @@ class ICShrinkageSettings:
     correlation_penalty: float = 0.005
     cost_penalty: float = 0.01
     weight_turnover_penalty: float = 0.01
+    weight_change_norm: str = "l2"
+    core_factors: tuple[str, ...] = ()
+    core_anchor_mode: str = "equal_family"
+    core_anchor_penalty: float = 0.0
     max_factor_weight: float = 0.35
     min_active_factors: int = 3
     min_factor_fraction: float = 0.50
@@ -52,6 +56,7 @@ class ICShrinkageSettings:
             "correlation_penalty": self.correlation_penalty,
             "cost_penalty": self.cost_penalty,
             "weight_turnover_penalty": self.weight_turnover_penalty,
+            "core_anchor_penalty": self.core_anchor_penalty,
             "feasibility_tolerance": self.feasibility_tolerance,
         }
         for name, value in numeric_nonnegative.items():
@@ -60,6 +65,22 @@ class ICShrinkageSettings:
         if not np.isfinite(self.min_mean_directed_ic):
             raise ConfigurationError(
                 "IC shrinkage min_mean_directed_ic must be finite"
+            )
+        if self.weight_change_norm not in {"l1", "l2"}:
+            raise ConfigurationError(
+                "IC shrinkage weight_change_norm must be 'l1' or 'l2'"
+            )
+        if self.core_anchor_mode not in {"equal_factor", "equal_family"}:
+            raise ConfigurationError(
+                "IC shrinkage core_anchor_mode must be equal_factor or equal_family"
+            )
+        if len(set(self.core_factors)) != len(self.core_factors):
+            raise ConfigurationError(
+                "IC shrinkage core_factors cannot contain duplicates"
+            )
+        if self.core_anchor_penalty > 0 and not self.core_factors:
+            raise ConfigurationError(
+                "IC shrinkage core_factors are required when the core anchor is active"
             )
         if not 0 < self.max_factor_weight <= 1:
             raise ConfigurationError(
@@ -89,7 +110,9 @@ class ICShrinkageAlphaModel:
         self,
         *,
         directions: Mapping[str, int],
+        families: Mapping[str, str] | None = None,
         settings: ICShrinkageSettings | None = None,
+        name: str = "ic_shrinkage",
     ) -> None:
         invalid = sorted(
             factor for factor, direction in directions.items() if direction not in {-1, 1}
@@ -98,8 +121,30 @@ class ICShrinkageAlphaModel:
             raise ConfigurationError(
                 f"IC shrinkage directions must be -1 or 1: {invalid}"
             )
-        self.directions = dict(directions)
         self.settings = settings or ICShrinkageSettings()
+        missing_core_directions = sorted(
+            set(self.settings.core_factors).difference(directions)
+        )
+        if missing_core_directions:
+            raise ConfigurationError(
+                "IC shrinkage core factors lack directions: "
+                f"{missing_core_directions}"
+            )
+        self.directions = dict(directions)
+        self.families = dict(families or {})
+        if (
+            self.settings.core_anchor_penalty > 0
+            and self.settings.core_anchor_mode == "equal_family"
+        ):
+            missing_core_families = sorted(
+                set(self.settings.core_factors).difference(self.families)
+            )
+            if missing_core_families:
+                raise ConfigurationError(
+                    "IC shrinkage core factors lack families: "
+                    f"{missing_core_families}"
+                )
+        self.name = str(name)
         self.factor_names: tuple[str, ...] = ()
         self.factor_weights: dict[str, float] = {}
         self._previous_weights: dict[str, float] = {}
@@ -248,15 +293,27 @@ class ICShrinkageAlphaModel:
             [factor_statistics[factor]["score_churn"] for factor in eligible],
             dtype=float,
         )
+        core_anchor, core_anchor_source, active_core = self._core_anchor_vector(
+            eligible
+        )
         previous, previous_source, dropped_mass, dropped_squared = (
-            self._previous_weight_vector(eligible)
+            self._previous_weight_vector(
+                eligible,
+                initial=(
+                    core_anchor
+                    if self.settings.core_anchor_penalty > 0
+                    else None
+                ),
+            )
         )
         optimized, optimization = self._solve(
             posterior=posterior_vector,
             redundancy=redundancy,
             churn=churn_vector,
             previous=previous,
+            dropped_previous_weight=dropped_mass,
             dropped_previous_squared=dropped_squared,
+            core_anchor=core_anchor,
         )
 
         weights = {factor: 0.0 for factor in names}
@@ -286,8 +343,30 @@ class ICShrinkageAlphaModel:
                 for factor in union
             )
         )
+        core_set = set(self.settings.core_factors)
+        core_weight = float(
+            sum(weight for factor, weight in weights.items() if factor in core_set)
+        )
+        candidate_weight = float(sum(weights.values()) - core_weight)
+        risk_contributions = self._risk_contributions(
+            eligible,
+            optimized,
+            redundancy,
+        )
+        family_factors: dict[str, list[str]] = {}
+        family_weights: dict[str, float] = {}
+        for factor, weight in weights.items():
+            family = self.families.get(factor)
+            if family is None:
+                continue
+            family_factors.setdefault(family, []).append(factor)
+            family_weights[family] = family_weights.get(family, 0.0) + weight
         parameters: dict[str, Any] = {
-            "method": "empirical_bayes_ic_shrinkage_convex_synthesis",
+            "method": (
+                "core_anchored_empirical_bayes_ic_shrinkage"
+                if self.settings.core_anchor_penalty > 0
+                else "empirical_bayes_ic_shrinkage_convex_synthesis"
+            ),
             "as_of_date": str(as_of_date),
             "settings": asdict(self.settings),
             "factor_statistics": factor_statistics,
@@ -301,6 +380,16 @@ class ICShrinkageAlphaModel:
             "dropped_previous_weight": dropped_mass,
             "dropped_previous_squared": dropped_squared,
             "realized_factor_weight_l1_change": realized_turnover,
+            "core_anchor_source": core_anchor_source,
+            "active_core_factors": list(active_core),
+            "core_anchor_weights": {
+                factor: float(weight)
+                for factor, weight in zip(eligible, core_anchor, strict=True)
+            },
+            "core_weight": core_weight,
+            "candidate_weight": candidate_weight,
+            "family_factors": family_factors,
+            "family_weights": family_weights,
             "weights": weights,
             "signed_weights": {
                 factor: weight * self.directions[factor]
@@ -308,6 +397,11 @@ class ICShrinkageAlphaModel:
             },
             "weight_concentration": float(np.square(optimized).sum()),
             "effective_factor_count": float(1.0 / np.square(optimized).sum()),
+            "factor_risk_contributions": risk_contributions,
+            "maximum_factor_risk_contribution": max(
+                risk_contributions.values(),
+                default=0.0,
+            ),
             "optimization": optimization,
         }
         return ModelFitSummary(
@@ -454,8 +548,17 @@ class ICShrinkageAlphaModel:
     def _previous_weight_vector(
         self,
         eligible: Sequence[str],
+        *,
+        initial: np.ndarray | None = None,
     ) -> tuple[np.ndarray, str, float, float]:
         if not self._has_inherited_state:
+            if initial is not None:
+                return (
+                    np.asarray(initial, dtype=float).copy(),
+                    "core_anchor_initialization",
+                    0.0,
+                    0.0,
+                )
             return (
                 np.full(len(eligible), 1.0 / len(eligible), dtype=float),
                 "equal_weight_initialization",
@@ -481,6 +584,51 @@ class ICShrinkageAlphaModel:
             float(np.square(dropped).sum()) if len(dropped) else 0.0,
         )
 
+    def _core_anchor_vector(
+        self,
+        eligible: Sequence[str],
+    ) -> tuple[np.ndarray, str, tuple[str, ...]]:
+        anchor = np.zeros(len(eligible), dtype=float)
+        if self.settings.core_anchor_penalty <= 0:
+            return anchor, "disabled", ()
+        core_set = set(self.settings.core_factors)
+        active_core = tuple(factor for factor in eligible if factor in core_set)
+        if not active_core:
+            raise InsufficientTrainingData(
+                "IC shrinkage has no eligible core factor for the active soft anchor"
+            )
+        positions = {factor: position for position, factor in enumerate(eligible)}
+        if self.settings.core_anchor_mode == "equal_factor":
+            for factor in active_core:
+                anchor[positions[factor]] = 1.0 / len(active_core)
+            return anchor, "equal_factor_core", active_core
+
+        grouped: dict[str, list[str]] = {}
+        for factor in active_core:
+            grouped.setdefault(self.families[factor], []).append(factor)
+        family_weight = 1.0 / len(grouped)
+        for factors in grouped.values():
+            factor_weight = family_weight / len(factors)
+            for factor in factors:
+                anchor[positions[factor]] = factor_weight
+        return anchor, "equal_family_core", active_core
+
+    @staticmethod
+    def _risk_contributions(
+        eligible: Sequence[str],
+        weights: np.ndarray,
+        risk_matrix: np.ndarray,
+    ) -> dict[str, float]:
+        total = float(weights @ risk_matrix @ weights)
+        if total <= 1e-16:
+            return {factor: 0.0 for factor in eligible}
+        marginal = risk_matrix @ weights
+        contributions = weights * marginal / total
+        return {
+            factor: float(value)
+            for factor, value in zip(eligible, contributions, strict=True)
+        }
+
     def _solve(
         self,
         *,
@@ -488,18 +636,29 @@ class ICShrinkageAlphaModel:
         redundancy: np.ndarray,
         churn: np.ndarray,
         previous: np.ndarray,
+        dropped_previous_weight: float,
         dropped_previous_squared: float,
+        core_anchor: np.ndarray,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         weights = cp.Variable(len(posterior))
         return_term = posterior @ weights
         correlation_term = cp.quad_form(weights, cp.psd_wrap(redundancy))
         cost_term = churn @ weights
-        stability_term = cp.sum_squares(weights - previous) + dropped_previous_squared
+        if self.settings.weight_change_norm == "l1":
+            stability_term = (
+                cp.norm1(weights - previous) + dropped_previous_weight
+            )
+        else:
+            stability_term = (
+                cp.sum_squares(weights - previous) + dropped_previous_squared
+            )
+        core_anchor_term = cp.sum_squares(weights - core_anchor)
         objective = cp.Maximize(
             return_term
             - self.settings.correlation_penalty * correlation_term
             - self.settings.cost_penalty * cost_term
             - self.settings.weight_turnover_penalty * stability_term
+            - self.settings.core_anchor_penalty * core_anchor_term
         )
         problem = cp.Problem(
             objective,
@@ -555,9 +714,15 @@ class ICShrinkageAlphaModel:
             )
         correlation_value = float(optimized @ redundancy @ optimized)
         cost_value = float(churn @ optimized)
-        stability_value = float(
-            np.square(optimized - previous).sum() + dropped_previous_squared
+        stability_value = (
+            float(np.abs(optimized - previous).sum() + dropped_previous_weight)
+            if self.settings.weight_change_norm == "l1"
+            else float(
+                np.square(optimized - previous).sum()
+                + dropped_previous_squared
+            )
         )
+        core_anchor_value = float(np.square(optimized - core_anchor).sum())
         diagnostics: dict[str, Any] = {
             "solver": str(problem.solver_stats.solver_name),
             "status": str(problem.status),
@@ -570,9 +735,13 @@ class ICShrinkageAlphaModel:
                 * correlation_value,
                 "score_churn": cost_value,
                 "cost_penalty": self.settings.cost_penalty * cost_value,
-                "weight_change_squared": stability_value,
+                "weight_change_norm": self.settings.weight_change_norm,
+                "weight_change": stability_value,
                 "weight_turnover_penalty": self.settings.weight_turnover_penalty
                 * stability_value,
+                "core_anchor_deviation_squared": core_anchor_value,
+                "core_anchor_penalty": self.settings.core_anchor_penalty
+                * core_anchor_value,
             },
             "constraint_residuals": {
                 "sum_to_one": abs(float(optimized.sum()) - 1.0),

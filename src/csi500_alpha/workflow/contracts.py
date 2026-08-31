@@ -6,6 +6,8 @@ from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
 
+from csi500_alpha.logging_utils import ProgressCallback
+
 
 @dataclass(frozen=True)
 class FeatureBuildContext:
@@ -19,6 +21,9 @@ class FeatureBuildContext:
     rebalance_every: int
     industry_membership: pd.DataFrame
     industry_transition_date: str
+    financial_tables: Mapping[str, pd.DataFrame] | None = None
+    benchmark_membership_intervals: pd.DataFrame | None = None
+    progress_callback: ProgressCallback | None = None
 
 
 class FactorProvider(Protocol):

@@ -8,6 +8,7 @@
 /data/
 /runs/
 /studies/
+/annual-studies/
 /outputs/
 /reports/private/
 *.parquet

@@ -1,0 +1,195 @@
+contract_version: csi500-effective-membership-v1
+
+# ``effective_from`` is the first trading session using the new membership.
+# For announcements effective after the close, this is the following open day.
+events:
+  - event_id: regular-2016-06
+    confirmation_snapshot_date: "20160630"
+    published_date: "20160530"
+    effective_from: "20160613"
+    event_type: regular
+    notice_id: 3605
+  - event_id: regular-2016-12
+    confirmation_snapshot_date: "20161230"
+    published_date: "20161128"
+    effective_from: "20161212"
+    event_type: regular
+    notice_id: 4409
+  - event_id: temporary-2017-01-merger
+    confirmation_snapshot_date: "20170126"
+    published_date: "20161219"
+    effective_from: "20170118"
+    event_type: temporary
+    notice_id: 4718
+    removals: [000748.SZ]
+    additions: [002670.SZ]
+  - event_id: temporary-2017-02-merger
+    confirmation_snapshot_date: "20170228"
+    published_date: "20170209"
+    effective_from: "20170214"
+    event_type: temporary
+    notice_id: 4794
+    removals: [600549.SH]
+    additions: [600848.SH]
+  - event_id: regular-2017-06
+    confirmation_snapshot_date: "20170630"
+    published_date: "20170531"
+    effective_from: "20170612"
+    event_type: regular
+    notice_id: 12583
+  - event_id: regular-2017-12
+    confirmation_snapshot_date: "20171229"
+    published_date: "20171127"
+    effective_from: "20171211"
+    event_type: regular
+    notice_id: 12589
+  - event_id: regular-2018-06
+    confirmation_snapshot_date: "20180629"
+    published_date: "20180528"
+    effective_from: "20180611"
+    event_type: regular
+    notice_id: 12708
+  - event_id: regular-2018-12
+    confirmation_snapshot_date: "20181228"
+    published_date: "20181203"
+    effective_from: "20181217"
+    event_type: regular
+    notice_id: 12807
+  - event_id: temporary-2019-01-merger
+    confirmation_snapshot_date: "20190131"
+    published_date: "20181217"
+    effective_from: "20190118"
+    event_type: temporary
+    notice_id: 12524
+    removals: [600270.SH]
+    additions: [601598.SH]
+  - event_id: regular-2019-06
+    confirmation_snapshot_date: "20190628"
+    published_date: "20190603"
+    effective_from: "20190617"
+    event_type: regular
+    notice_id: 12934
+  - event_id: regular-2019-12
+    confirmation_snapshot_date: "20191231"
+    published_date: "20191202"
+    effective_from: "20191216"
+    event_type: regular
+    notice_id: 13044
+  - event_id: regular-2020-06
+    confirmation_snapshot_date: "20200630"
+    published_date: "20200601"
+    effective_from: "20200615"
+    event_type: regular
+    notice_id: 13130
+  - event_id: temporary-2020-08-risk-warning
+    confirmation_snapshot_date: "20200831"
+    published_date: "20200811"
+    effective_from: "20200817"
+    event_type: temporary
+    notice_id: 13179
+    removals: [002470.SZ]
+    additions: [603708.SH]
+  - event_id: regular-2020-12
+    confirmation_snapshot_date: "20201231"
+    published_date: "20201127"
+    effective_from: "20201214"
+    event_type: regular
+    notice_id: 13247
+  - event_id: temporary-2021-03-risk-warning
+    confirmation_snapshot_date: "20210331"
+    published_date: "20210303"
+    effective_from: "20210315"
+    event_type: temporary
+    notice_id: 13307
+    removals: [000564.SZ, 600515.SH]
+    additions: [600764.SH, 600956.SH]
+  - event_id: regular-2021-06
+    confirmation_snapshot_date: "20210630"
+    published_date: "20210528"
+    effective_from: "20210615"
+    event_type: regular
+    notice_id: 13372
+  - event_id: temporary-2021-09-risk-warning
+    confirmation_snapshot_date: "20210930"
+    published_date: "20210908"
+    effective_from: "20210913"
+    event_type: temporary
+    notice_id: 13716
+    removals: [600260.SH]
+    additions: [600297.SH]
+  - event_id: temporary-2021-09-merger
+    confirmation_snapshot_date: "20210930"
+    published_date: "20210830"
+    effective_from: "20210928"
+    event_type: temporary
+    notice_id: 13420
+    removals: [600068.SH]
+    additions: [601868.SH]
+  - event_id: regular-2021-12
+    confirmation_snapshot_date: "20211231"
+    published_date: "20211126"
+    effective_from: "20211213"
+    event_type: regular
+    notice_id: 13888
+  - event_id: regular-2022-06
+    confirmation_snapshot_date: "20220630"
+    published_date: "20220527"
+    effective_from: "20220613"
+    event_type: regular
+    notice_id: 14225
+  - event_id: regular-2022-12
+    confirmation_snapshot_date: "20221230"
+    published_date: "20221125"
+    effective_from: "20221212"
+    event_type: regular
+    notice_id: 14503
+  - event_id: regular-2023-06
+    confirmation_snapshot_date: "20230630"
+    published_date: "20230526"
+    effective_from: "20230612"
+    event_type: regular
+    notice_id: 14796
+  - event_id: regular-2023-12
+    confirmation_snapshot_date: "20231229"
+    published_date: "20231124"
+    effective_from: "20231211"
+    event_type: regular
+    notice_id: 15044
+  - event_id: regular-2024-06
+    confirmation_snapshot_date: "20240628"
+    published_date: "20240531"
+    effective_from: "20240617"
+    event_type: regular
+    notice_id: 15267
+  - event_id: regular-2024-12
+    confirmation_snapshot_date: "20241231"
+    published_date: "20241129"
+    effective_from: "20241216"
+    event_type: regular
+    notice_id: 15471
+  - event_id: regular-2025-06
+    confirmation_snapshot_date: "20250630"
+    published_date: "20250530"
+    effective_from: "20250616"
+    event_type: regular
+    notice_id: 15690
+  - event_id: regular-2025-12
+    confirmation_snapshot_date: "20251231"
+    published_date: "20251128"
+    effective_from: "20251215"
+    event_type: regular
+    notice_id: 3006000
+  - event_id: temporary-2026-01-risk-warning
+    confirmation_snapshot_date: "20260130"
+    published_date: "20260106"
+    effective_from: "20260112"
+    event_type: temporary
+    notice_id: 3006027
+    removals: [600079.SH]
+    additions: [688037.SH]
+  - event_id: regular-2026-06
+    confirmation_snapshot_date: "20260630"
+    published_date: "20260529"
+    effective_from: "20260615"
+    event_type: regular
+    notice_id: 3006137

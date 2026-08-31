@@ -14,6 +14,7 @@ def test_smoke_config_loads_from_project_root() -> None:
     assert config.paths.root == root
     assert config.dates.raw_start < config.dates.backtest_start < config.dates.end
     assert config.source.index_code == "000905.SH"
+    assert config.source.total_return_index_code == "H00905.CSI"
     assert config.research.top_n == 30
 
 
@@ -49,6 +50,37 @@ def test_extended_validation_can_reserve_future_holdout() -> None:
     assert config.experiment.validation_end == config.dates.end
     assert config.experiment.test_start > config.dates.end
     assert config.experiment.allow_frozen_test is False
+    assert config.optimizer.tracking_error_cap == 0.05
+    assert config.optimizer.constraint_materiality_tolerance == 0.0001
+    assert config.risk.model == "ledoit_wolf"
+    assert config.risk.beta_model == "feature_60"
+
+
+def test_a1_study_is_a_fixed_signal_two_by_two_risk_design() -> None:
+    root = Path(__file__).resolve().parents[1]
+    spec = StudySpec.from_yaml(
+        root / "configs" / "studies" / "a1_risk_translation_v1.yaml"
+    )
+    base = AppConfig.from_yaml(spec.base_config_path)
+    resolved = [
+        resolve_trial_config(base, study_id=spec.study_id, trial=trial)
+        for trial in spec.trials
+    ]
+
+    assert [trial.trial_id for trial in spec.trials] == [
+        "a0_current",
+        "a1_beta_ewma",
+        "a1_factor_covariance",
+        "a1_joint",
+    ]
+    assert {(config.risk.model, config.risk.beta_model) for config in resolved} == {
+        ("ledoit_wolf", "feature_60"),
+        ("ledoit_wolf", "ewma_shrunk"),
+        ("factor_ewma", "feature_60"),
+        ("factor_ewma", "ewma_shrunk"),
+    }
+    reference = resolved[0].workflow
+    assert all(config.workflow == reference for config in resolved[1:])
 
 
 def test_final_holdout_config_exactly_freezes_selected_d1_method() -> None:
@@ -118,4 +150,12 @@ def test_snapshot_cache_configuration_is_validated() -> None:
         replace(
             base,
             download=replace(base.download, eligibility_refresh_start="19990101"),
+        ).validate()
+    with pytest.raises(ConfigurationError, match="must differ"):
+        replace(
+            base,
+            source=replace(
+                base.source,
+                total_return_index_code=base.source.index_code,
+            ),
         ).validate()

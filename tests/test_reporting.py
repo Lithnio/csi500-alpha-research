@@ -30,8 +30,26 @@ def test_public_report_exports_only_aggregate_evidence(tmp_path: Path) -> None:
     assert "instrument" not in summary_text
     summary = json.loads(summary_text)
     assert summary["scope"]["evaluation_role"] == "method_selection"
+    assert summary["headline_metrics"]["relative_active_total_return"] == pytest.approx(
+        0.0714285714
+    )
+    assert summary["headline_metrics"]["active_max_drawdown"] == -0.08
+    assert summary["headline_metrics"]["portfolio_max_drawdown"] == -0.20
+    assert summary["headline_metrics"]["capm_alpha_annualized"] == 0.04
+    assert summary["headline_metrics"]["capm_beta"] == 0.95
+    assert summary["headline_metrics"][
+        "maximum_post_trade_active_beta_deviation"
+    ] == 0.04
+    assert summary["headline_metrics"][
+        "post_trade_policy_violation_fraction"
+    ] == 0.0
+    assert summary["headline_metrics"]["post_trade_audit_count"] == 23
+    assert summary["headline_metrics"]["beta_audit_complete_fraction"] == 1.0
     assert len(summary["innovation_ablation"]["rows"]) == 5
     assert len(summary["stress"]["rows"]) == 4
+    assert {row["execution_mode"] for row in summary["stress"]["rows"]} == {
+        "reoptimized"
+    }
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert set(manifest["outputs"]) == {
         "backtest-overview.png",
@@ -164,6 +182,11 @@ def _report_fixture(tmp_path: Path) -> tuple[Path, Path]:
                         "information_ratio": 1.5 - position * 0.1,
                         "annualized_active_return": 0.08 - position * 0.005,
                         "max_drawdown": -0.2 - position * 0.01,
+                        "active_max_drawdown": -0.08 - position * 0.005,
+                        "portfolio_max_drawdown": -0.2 - position * 0.01,
+                        "post_trade_policy_violation_fraction": 0.0,
+                        "maximum_post_trade_active_beta_deviation": 0.04,
+                        "beta_audit_complete_fraction": 1.0,
                         "average_turnover": 0.04 + position * 0.002,
                     },
                     "evaluation": {
@@ -201,8 +224,18 @@ def _trial_summary(
             "benchmark_total_return": -0.02,
             "annualized_return": 0.05,
             "annualized_active_return": 0.07,
+            "relative_active_total_return": 0.0714285714,
             "information_ratio": information_ratio,
             "max_drawdown": -0.20,
+            "active_max_drawdown": -0.08,
+            "portfolio_max_drawdown": -0.20,
+            "capm_alpha_annualized": 0.04,
+            "capm_beta": 0.95,
+            "post_trade_audit_count": 23,
+            "maximum_post_trade_active_beta_deviation": 0.04,
+            "maximum_post_trade_industry_active_exposure": 0.015,
+            "post_trade_policy_violation_fraction": 0.0,
+            "beta_audit_complete_fraction": 1.0,
             "average_turnover": 0.04,
         },
         "evaluation": {

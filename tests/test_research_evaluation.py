@@ -20,6 +20,7 @@ def test_research_evaluation_aggregates_calibration_years_weights_and_execution(
         labels=labels,
         daily=daily,
         trades=trades,
+        optimization=_optimization(),
         model_fits=model_fits,
         calibrator_name="robust_cross_section",
         calibrator_params={"target_scale": 0.01, "score_clip": 3.0},
@@ -40,6 +41,12 @@ def test_research_evaluation_aggregates_calibration_years_weights_and_execution(
     yearly = result.summary["yearly"]
     assert yearly["year_count"] == 2
     assert yearly["positive_active_year_fraction"] == 1.0
+    assert yearly["minimum_active_total_return"] == pytest.approx(
+        result.yearly_metrics["active_total_return"].min()
+    )
+    assert yearly["median_active_total_return"] == pytest.approx(
+        result.yearly_metrics["active_total_return"].median()
+    )
     assert result.yearly_metrics["year"].tolist() == ["2024", "2025"]
     assert result.yearly_metrics["transaction_cost"].sum() == pytest.approx(
         trades[["linear_cost", "stamp_duty", "impact_cost"]].sum().sum()
@@ -60,6 +67,14 @@ def test_research_evaluation_aggregates_calibration_years_weights_and_execution(
     assert execution["blocked_orders"] == 1
     assert execution["notional_fill_ratio"] == pytest.approx(0.5)
     assert execution["cost_bps_of_executed_notional"] > 0
+
+    risk = result.summary["risk"]
+    assert risk["optimization_attempts"] == 3
+    assert risk["factor_model_attempts"] == 3
+    assert risk["factor_model_fallback_attempts"] == 1
+    assert risk["factor_model_fallback_fraction"] == pytest.approx(1.0 / 3.0)
+    assert risk["minimum_beta_observed_fraction"] == pytest.approx(0.91)
+    assert risk["maximum_beta_clip_fraction"] == pytest.approx(0.04)
 
 
 def test_research_evaluation_rejects_duplicate_signal_keys() -> None:
@@ -103,6 +118,24 @@ def _signals_and_labels() -> tuple[pd.DataFrame, pd.DataFrame]:
     return pd.DataFrame(rows), pd.DataFrame(label_rows)
 
 
+def _optimization() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "risk_method": [
+                "factor_ewma",
+                "factor_ewma",
+                "factor_ewma_fallback:ledoit_wolf",
+            ],
+            "beta_method": ["ewma_shrunk_to_one"] * 3,
+            "risk_factor_model_fallback": [False, False, True],
+            "risk_factor_count": [36, 35, 0],
+            "risk_beta_observed_fraction": [0.95, 0.91, 0.94],
+            "risk_beta_clip_fraction": [0.02, 0.04, 0.03],
+            "risk_factor_covariance_condition_number": [100.0, 120.0, np.nan],
+        }
+    )
+
+
 def _daily_returns() -> pd.DataFrame:
     dates = (
         "20241202",
@@ -116,10 +149,16 @@ def _daily_returns() -> pd.DataFrame:
     )
     benchmark = np.asarray([0.0, 0.001, -0.001, 0.001, 0.0, -0.001, 0.001, 0.001])
     active = np.asarray([0.0, 0.001, 0.0005, 0.0007, 0.0, 0.0008, 0.0004, 0.0006])
-    portfolio = benchmark + active
+    portfolio = (1.0 + benchmark) * (1.0 + active) - 1.0
+    nav = np.cumprod(1.0 + portfolio)
+    benchmark_nav = np.cumprod(1.0 + benchmark)
+    active_nav = nav / benchmark_nav
     return pd.DataFrame(
         {
             "trade_date": dates,
+            "nav": nav,
+            "benchmark_nav": benchmark_nav,
+            "active_nav": active_nav,
             "portfolio_return": portfolio,
             "benchmark_return": benchmark,
             "active_return": active,

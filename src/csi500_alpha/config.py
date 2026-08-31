@@ -76,6 +76,7 @@ class SourceSettings:
     token_env: str
     exchange: str
     index_code: str
+    total_return_index_code: str
     max_attempts: int
     request_timeout_seconds: float
     backoff_base_seconds: float
@@ -131,6 +132,21 @@ class RiskSettings:
     missing_annual_volatility: float
     variance_floor: float
     return_clip: float
+    model: str = "ledoit_wolf"
+    beta_model: str = "feature_60"
+    factor_half_life: float = 63.0
+    specific_half_life: float = 63.0
+    factor_covariance_shrinkage: float = 0.25
+    specific_variance_shrinkage: float = 0.50
+    factor_ridge: float = 1e-3
+    min_factor_cross_section: int = 100
+    style_exposure_clip: float = 3.0
+    beta_lookback: int = 252
+    beta_min_history: int = 60
+    beta_half_life: float = 63.0
+    beta_shrinkage: float = 0.25
+    beta_clip_min: float = 0.25
+    beta_clip_max: float = 1.75
 
 
 @dataclass(frozen=True)
@@ -145,7 +161,11 @@ class OptimizerSettings:
     initial_turnover_cap: float
     exposure_cap: float
     solvers: tuple[str, ...]
+    beta_constraint_enabled: bool = False
+    beta_active_cap: float = 0.05
+    tracking_error_cap: float = 0.05
     feasibility_tolerance: float = 1e-6
+    constraint_materiality_tolerance: float = 1e-4
     liquidity_enabled: bool = False
     portfolio_aum_cny: float = 100_000_000.0
     adv_lookback: int = 20
@@ -254,6 +274,7 @@ class AppConfig:
                 "token_env",
                 "exchange",
                 "index_code",
+                "total_return_index_code",
                 "max_attempts",
                 "request_timeout_seconds",
                 "backoff_base_seconds",
@@ -290,6 +311,21 @@ class AppConfig:
                 "missing_annual_volatility",
                 "variance_floor",
                 "return_clip",
+                "model",
+                "beta_model",
+                "factor_half_life",
+                "specific_half_life",
+                "factor_covariance_shrinkage",
+                "specific_variance_shrinkage",
+                "factor_ridge",
+                "min_factor_cross_section",
+                "style_exposure_clip",
+                "beta_lookback",
+                "beta_min_history",
+                "beta_half_life",
+                "beta_shrinkage",
+                "beta_clip_min",
+                "beta_clip_max",
             },
             "optimizer": {
                 "enabled",
@@ -302,7 +338,11 @@ class AppConfig:
                 "initial_turnover_cap",
                 "exposure_cap",
                 "solvers",
+                "beta_constraint_enabled",
+                "beta_active_cap",
+                "tracking_error_cap",
                 "feasibility_tolerance",
+                "constraint_materiality_tolerance",
                 "liquidity_enabled",
                 "portfolio_aum_cny",
                 "adv_lookback",
@@ -468,6 +508,9 @@ class AppConfig:
                 token_env=str(_require(source, "token_env", "source")),
                 exchange=str(_require(source, "exchange", "source")),
                 index_code=str(_require(source, "index_code", "source")),
+                total_return_index_code=str(
+                    source.get("total_return_index_code", "H00905.CSI")
+                ),
                 max_attempts=int(source.get("max_attempts", 3)),
                 request_timeout_seconds=float(source.get("request_timeout_seconds", 30.0)),
                 backoff_base_seconds=float(source.get("backoff_base_seconds", 1.0)),
@@ -545,6 +588,27 @@ class AppConfig:
                 missing_annual_volatility=float(risk.get("missing_annual_volatility", 0.80)),
                 variance_floor=float(risk.get("variance_floor", 1e-8)),
                 return_clip=float(risk.get("return_clip", 0.20)),
+                model=str(risk.get("model", "ledoit_wolf")),
+                beta_model=str(risk.get("beta_model", "feature_60")),
+                factor_half_life=float(risk.get("factor_half_life", 63.0)),
+                specific_half_life=float(risk.get("specific_half_life", 63.0)),
+                factor_covariance_shrinkage=float(
+                    risk.get("factor_covariance_shrinkage", 0.25)
+                ),
+                specific_variance_shrinkage=float(
+                    risk.get("specific_variance_shrinkage", 0.50)
+                ),
+                factor_ridge=float(risk.get("factor_ridge", 1e-3)),
+                min_factor_cross_section=int(
+                    risk.get("min_factor_cross_section", 100)
+                ),
+                style_exposure_clip=float(risk.get("style_exposure_clip", 3.0)),
+                beta_lookback=int(risk.get("beta_lookback", 252)),
+                beta_min_history=int(risk.get("beta_min_history", 60)),
+                beta_half_life=float(risk.get("beta_half_life", 63.0)),
+                beta_shrinkage=float(risk.get("beta_shrinkage", 0.25)),
+                beta_clip_min=float(risk.get("beta_clip_min", 0.25)),
+                beta_clip_max=float(risk.get("beta_clip_max", 1.75)),
             ),
             optimizer=OptimizerSettings(
                 enabled=_boolean(optimizer.get("enabled", False), "optimizer.enabled"),
@@ -563,7 +627,16 @@ class AppConfig:
                         "optimizer.solvers",
                     )
                 ),
+                beta_constraint_enabled=_boolean(
+                    optimizer.get("beta_constraint_enabled", False),
+                    "optimizer.beta_constraint_enabled",
+                ),
+                beta_active_cap=float(optimizer.get("beta_active_cap", 0.05)),
+                tracking_error_cap=float(optimizer.get("tracking_error_cap", 0.05)),
                 feasibility_tolerance=float(optimizer.get("feasibility_tolerance", 1e-6)),
+                constraint_materiality_tolerance=float(
+                    optimizer.get("constraint_materiality_tolerance", 1e-4)
+                ),
                 liquidity_enabled=_boolean(
                     optimizer.get("liquidity_enabled", False),
                     "optimizer.liquidity_enabled",
@@ -605,6 +678,12 @@ class AppConfig:
             raise ConfigurationError("source.min_request_interval_seconds cannot be negative")
         if self.source.calls_per_minute_limit < 1:
             raise ConfigurationError("source.calls_per_minute_limit must be positive")
+        if not self.source.total_return_index_code.strip():
+            raise ConfigurationError("source.total_return_index_code cannot be empty")
+        if self.source.total_return_index_code == self.source.index_code:
+            raise ConfigurationError(
+                "source.total_return_index_code must differ from source.index_code"
+            )
         if self.research.factor_window < 1 or self.research.rebalance_every < 1:
             raise ConfigurationError("Factor and rebalance windows must be positive")
         if self.research.top_n < 1:
@@ -619,6 +698,47 @@ class AppConfig:
             raise ConfigurationError("Risk annualization and missing volatility must be positive")
         if self.risk.variance_floor <= 0 or self.risk.return_clip <= 0:
             raise ConfigurationError("Risk floors and clipping thresholds must be positive")
+        allowed_risk_models = {"ledoit_wolf", "factor_ewma"}
+        if self.risk.model not in allowed_risk_models:
+            raise ConfigurationError(
+                f"risk.model must be one of {sorted(allowed_risk_models)}"
+            )
+        allowed_beta_models = {"feature_60", "ewma_shrunk"}
+        if self.risk.beta_model not in allowed_beta_models:
+            raise ConfigurationError(
+                f"risk.beta_model must be one of {sorted(allowed_beta_models)}"
+            )
+        positive_risk_parameters = {
+            "risk.factor_half_life": self.risk.factor_half_life,
+            "risk.specific_half_life": self.risk.specific_half_life,
+            "risk.factor_ridge": self.risk.factor_ridge,
+            "risk.min_factor_cross_section": self.risk.min_factor_cross_section,
+            "risk.style_exposure_clip": self.risk.style_exposure_clip,
+            "risk.beta_lookback": self.risk.beta_lookback,
+            "risk.beta_min_history": self.risk.beta_min_history,
+            "risk.beta_half_life": self.risk.beta_half_life,
+        }
+        if any(value <= 0 for value in positive_risk_parameters.values()):
+            raise ConfigurationError("Factor-risk and beta windows must be positive")
+        if not 2 <= self.risk.beta_min_history <= self.risk.beta_lookback:
+            raise ConfigurationError(
+                "Expected 2 <= risk.beta_min_history <= risk.beta_lookback"
+            )
+        shrinkages = {
+            "risk.factor_covariance_shrinkage": (
+                self.risk.factor_covariance_shrinkage
+            ),
+            "risk.specific_variance_shrinkage": (
+                self.risk.specific_variance_shrinkage
+            ),
+            "risk.beta_shrinkage": self.risk.beta_shrinkage,
+        }
+        if any(not 0 <= value <= 1 for value in shrinkages.values()):
+            raise ConfigurationError("Risk shrinkage parameters must be in [0, 1]")
+        if self.risk.beta_clip_min <= 0 or self.risk.beta_clip_min >= self.risk.beta_clip_max:
+            raise ConfigurationError(
+                "Expected 0 < risk.beta_clip_min < risk.beta_clip_max"
+            )
         if self.optimizer.enabled and not self.optimizer.solvers:
             raise ConfigurationError("optimizer.solvers cannot be empty when enabled")
         bounded_positive = {
@@ -627,6 +747,8 @@ class AppConfig:
             "optimizer.name_cap": self.optimizer.name_cap,
             "optimizer.turnover_cap": self.optimizer.turnover_cap,
             "optimizer.initial_turnover_cap": self.optimizer.initial_turnover_cap,
+            "optimizer.beta_active_cap": self.optimizer.beta_active_cap,
+            "optimizer.tracking_error_cap": self.optimizer.tracking_error_cap,
         }
         if any(value <= 0 for value in bounded_positive.values()):
             raise ConfigurationError(
@@ -636,6 +758,11 @@ class AppConfig:
             raise ConfigurationError("Optimizer penalties cannot be negative")
         if self.optimizer.feasibility_tolerance <= 0:
             raise ConfigurationError("optimizer.feasibility_tolerance must be positive")
+        if self.optimizer.constraint_materiality_tolerance < self.optimizer.feasibility_tolerance:
+            raise ConfigurationError(
+                "optimizer.constraint_materiality_tolerance must be at least "
+                "optimizer.feasibility_tolerance"
+            )
         if self.optimizer.portfolio_aum_cny <= 0:
             raise ConfigurationError("optimizer.portfolio_aum_cny must be positive")
         if not (1 <= self.optimizer.min_adv_observations <= self.optimizer.adv_lookback):

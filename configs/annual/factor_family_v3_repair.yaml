@@ -1,0 +1,68 @@
+annual_study:
+  id: factor-family-v3-repair-annual-2020-2025
+  method_study: ../studies/factor_family_v2.yaml
+  years: [2020, 2021, 2022, 2023, 2024, 2025]
+  train_start: "20170103"
+  embargo_days: 5
+  max_workers: 2
+
+publication_gates:
+  - path: quality_passed
+    operator: "=="
+    value: true
+  - path: optimizer_solve_rate
+    operator: ">="
+    value: 0.95
+  - path: metrics.annualized_active_return
+    operator: ">="
+    value: 0.03
+  - path: metrics.information_ratio
+    operator: ">="
+    value: 0.80
+  - path: evaluation.yearly.positive_active_years
+    operator: ">="
+    value: 5
+  - path: evaluation.yearly.minimum_active_total_return
+    operator: ">="
+    value: -0.03
+  - path: metrics.active_max_drawdown
+    operator: ">="
+    value: -0.06
+  - path: metrics.rolling_beta_abs_deviation_p95
+    operator: "<="
+    value: 0.10
+  - path: evaluation.constraints.post_trade_material_configured_breach_fraction
+    operator: "<="
+    value: 0.10
+  - path: evaluation.constraints.post_trade_material_execution_deterioration_fraction
+    operator: "<="
+    value: 0.10
+  - path: evaluation.constraints.p95_actual_active_risk_utilization
+    operator: "<="
+    value: 1.05
+  - path: evaluation.model_weights.minimum_effective_factor_count
+    operator: ">="
+    value: 5.0
+  - path: evaluation.model_weights.maximum_single_factor_weight
+    operator: "<="
+    value: 0.200001
+  - path: evaluation.model_weights.maximum_family_weight
+    operator: "<="
+    value: 0.350001
+
+history:
+  - id: v1-method-selection-2023-2025
+    role: prior_method_selection
+    status: completed
+    included_in_selection: false
+    note: Used to diagnose method behavior before the annual protocol was frozen.
+  - id: v1-revealed-2026-h1
+    role: revealed_diagnostic
+    status: failed_out_of_sample
+    included_in_selection: false
+    note: Retained as a disclosed failure and never reused as independent evidence.
+  - id: v2-annual-2020-constraint-diagnostic
+    role: revealed_diagnostic
+    status: failed_constraint_policy
+    included_in_selection: false
+    note: The fold completed, but inherited active, industry and beta breaches were allowed to persist.

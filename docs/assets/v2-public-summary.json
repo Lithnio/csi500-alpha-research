@@ -1,0 +1,435 @@
+{
+  "annual_comparison": [
+    {
+      "baseline_annualized_active_return": 0.01695946718325425,
+      "expanded_annualized_active_return": -0.010302664505196457,
+      "increment_vs_baseline": -0.027262131688450708,
+      "year": 2020
+    },
+    {
+      "baseline_annualized_active_return": 0.026365119396694947,
+      "expanded_annualized_active_return": -0.004988035478575736,
+      "increment_vs_baseline": -0.03135315487527068,
+      "year": 2021
+    },
+    {
+      "baseline_annualized_active_return": 0.03136241335487133,
+      "expanded_annualized_active_return": 0.034708412369935715,
+      "increment_vs_baseline": 0.0033459990150643826,
+      "year": 2022
+    },
+    {
+      "baseline_annualized_active_return": 0.0015650304003047566,
+      "expanded_annualized_active_return": 0.0636895974540721,
+      "increment_vs_baseline": 0.06212456705376734,
+      "year": 2023
+    },
+    {
+      "baseline_annualized_active_return": -0.003617594788064893,
+      "expanded_annualized_active_return": 0.009187949763842074,
+      "increment_vs_baseline": 0.012805544551906967,
+      "year": 2024
+    },
+    {
+      "baseline_annualized_active_return": 0.026249468588505742,
+      "expanded_annualized_active_return": 0.01994851814429044,
+      "increment_vs_baseline": -0.006300950444215303,
+      "year": 2025
+    }
+  ],
+  "evidence_boundary": [
+    "The 2020-2025 results are rolling annual research folds, not a new independent holdout.",
+    "The factor audit is aggregate diagnostic evidence and does not replace fold-internal selection.",
+    "The 2026 H1 holdout is a revealed diagnostic for the prior method, not an independent holdout for v2.",
+    "Costs and capacity are modeled; the results are not live trading evidence."
+  ],
+  "expanded_pool_ablation": {
+    "active_max_drawdown": -0.0695172604439358,
+    "annualized_active_return": 0.01843513085155446,
+    "average_turnover": 0.028829105785178052,
+    "capm_alpha_annualized": 0.022613830911779546,
+    "capm_beta": 0.9486069182646785,
+    "delta_annualized_active_return": 0.0020011025291439832,
+    "delta_information_ratio": 0.039809472891796316,
+    "execution_cost_bps": 11.378821666733781,
+    "information_ratio": 0.42830096656555283,
+    "median_annual_increment": -0.0014774757145754602,
+    "minimum_active_total_return": -0.00977378389683392,
+    "notional_fill_ratio": 0.9968970274516152,
+    "optimizer_solve_rate": 0.9896193771626297,
+    "positive_active_years": 4,
+    "promoted": false,
+    "relative_active_total_return": 0.10994656593297325,
+    "tracking_error": 0.04501533846962095,
+    "transaction_cost": 0.04855519649117135,
+    "trial_id": "a2_discovery_pool",
+    "year_count": 6
+  },
+  "factor_audit": {
+    "candidate_count": 42,
+    "correlation_threshold": 0.75,
+    "decision_dates": 438,
+    "eligible_correlation_component_count": 12,
+    "eligible_count": 14,
+    "eligible_factors": [
+      {
+        "factor": "total_accruals_ttm",
+        "family": "accrual",
+        "mean_coverage": 0.884027397260274,
+        "mean_directed_rank_ic": 0.007469194905120721,
+        "median_yearly_net_spread": 0.0004815810500508399
+      },
+      {
+        "factor": "roe_change_yoy",
+        "family": "growth",
+        "mean_coverage": 0.8848721461187214,
+        "mean_directed_rank_ic": 0.011125833665175236,
+        "median_yearly_net_spread": 0.0008327809625583051
+      },
+      {
+        "factor": "amihud_20",
+        "family": "liquidity",
+        "mean_coverage": 0.9772557077625571,
+        "mean_directed_rank_ic": 0.022082840753172548,
+        "median_yearly_net_spread": 0.0010492089939366316
+      },
+      {
+        "factor": "free_turnover_20",
+        "family": "liquidity",
+        "mean_coverage": 0.9915799086757991,
+        "mean_directed_rank_ic": 0.04354650066119338,
+        "median_yearly_net_spread": 0.000871943232636297
+      },
+      {
+        "factor": "momentum_250_20",
+        "family": "momentum",
+        "mean_coverage": 0.9883744292237443,
+        "mean_directed_rank_ic": 0.017606879951778086,
+        "median_yearly_net_spread": 0.0013222530154448013
+      },
+      {
+        "factor": "cash_return_on_assets_ttm",
+        "family": "quality",
+        "mean_coverage": 0.8840730593607306,
+        "mean_directed_rank_ic": 0.014162561107946415,
+        "median_yearly_net_spread": 0.001292320666494004
+      },
+      {
+        "factor": "gross_profitability_ttm",
+        "family": "quality",
+        "mean_coverage": 0.8820593607305935,
+        "mean_directed_rank_ic": 0.00825248394596528,
+        "median_yearly_net_spread": 0.0006111385722106801
+      },
+      {
+        "factor": "low_downside_vol_60",
+        "family": "risk",
+        "mean_coverage": 0.9999041095890412,
+        "mean_directed_rank_ic": 0.033950331026141055,
+        "median_yearly_net_spread": 0.0008191203762510598
+      },
+      {
+        "factor": "low_idio_vol_60",
+        "family": "risk",
+        "mean_coverage": 0.9999041095890412,
+        "mean_directed_rank_ic": 0.045423428140318925,
+        "median_yearly_net_spread": 0.0009919194397797935
+      },
+      {
+        "factor": "low_range_vol_20",
+        "family": "risk",
+        "mean_coverage": 0.9999771689497717,
+        "mean_directed_rank_ic": 0.04575530352932809,
+        "median_yearly_net_spread": 0.0005418648990555398
+      },
+      {
+        "factor": "book_to_market",
+        "family": "value",
+        "mean_coverage": 0.9282648401826483,
+        "mean_directed_rank_ic": 0.021545269237243116,
+        "median_yearly_net_spread": 0.001264046541724363
+      },
+      {
+        "factor": "cfo_yield_ttm",
+        "family": "value",
+        "mean_coverage": 0.885538812785388,
+        "mean_directed_rank_ic": 0.020245084993643445,
+        "median_yearly_net_spread": 0.0019170828472924325
+      },
+      {
+        "factor": "earnings_yield_ttm",
+        "family": "value",
+        "mean_coverage": 0.9279269406392694,
+        "mean_directed_rank_ic": 0.027633453625348296,
+        "median_yearly_net_spread": 0.0010372395421550508
+      },
+      {
+        "factor": "sales_to_price_ttm",
+        "family": "value",
+        "mean_coverage": 0.8854337899543379,
+        "mean_directed_rank_ic": 0.01462131094313712,
+        "median_yearly_net_spread": 0.0012752211720248087
+      }
+    ],
+    "end_date": "20251231",
+    "family_rows": [
+      {
+        "candidate_count": 5,
+        "eligible_count": 4,
+        "family": "value",
+        "median_coverage": 0.9279269406392694
+      },
+      {
+        "candidate_count": 7,
+        "eligible_count": 3,
+        "family": "risk",
+        "median_coverage": 0.9999041095890412
+      },
+      {
+        "candidate_count": 5,
+        "eligible_count": 2,
+        "family": "liquidity",
+        "median_coverage": 0.9888767123287671
+      },
+      {
+        "candidate_count": 5,
+        "eligible_count": 2,
+        "family": "quality",
+        "median_coverage": 0.8854018264840182
+      },
+      {
+        "candidate_count": 4,
+        "eligible_count": 1,
+        "family": "growth",
+        "median_coverage": 0.8693881278538813
+      },
+      {
+        "candidate_count": 4,
+        "eligible_count": 1,
+        "family": "momentum",
+        "median_coverage": 0.999810502283105
+      },
+      {
+        "candidate_count": 2,
+        "eligible_count": 1,
+        "family": "accrual",
+        "median_coverage": 0.8264954337899544
+      },
+      {
+        "candidate_count": 4,
+        "eligible_count": 0,
+        "family": "reversal",
+        "median_coverage": 0.9999977168949772
+      },
+      {
+        "candidate_count": 3,
+        "eligible_count": 0,
+        "family": "size",
+        "median_coverage": 1.0
+      },
+      {
+        "candidate_count": 2,
+        "eligible_count": 0,
+        "family": "investment",
+        "median_coverage": 0.8830251141552511
+      },
+      {
+        "candidate_count": 1,
+        "eligible_count": 0,
+        "family": "interaction",
+        "median_coverage": 0.9888767123287671
+      }
+    ],
+    "mean_coverage": 0.9511823222439661,
+    "panel_rows": 219000,
+    "point_in_time_violations": 0,
+    "start_date": "20170103",
+    "yearly_rows": [
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0012827802919118682,
+        "positive_net_spread_count": 13,
+        "year": 2017
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0018281003000765693,
+        "positive_net_spread_count": 12,
+        "year": 2018
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0008770723262684603,
+        "positive_net_spread_count": 13,
+        "year": 2019
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0004916298013204691,
+        "positive_net_spread_count": 8,
+        "year": 2020
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0006574269677557247,
+        "positive_net_spread_count": 10,
+        "year": 2021
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0004491249467538075,
+        "positive_net_spread_count": 9,
+        "year": 2022
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0012890909928671107,
+        "positive_net_spread_count": 11,
+        "year": 2023
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 0.0017105023171140104,
+        "positive_net_spread_count": 13,
+        "year": 2024
+      },
+      {
+        "factor_count": 14,
+        "median_net_spread": 7.115572838567273e-05,
+        "positive_net_spread_count": 7,
+        "year": 2025
+      }
+    ]
+  },
+  "release": {
+    "candidate_signal_check": {
+      "active_allocation_years": 0,
+      "fold_rows": [
+        {
+          "final_oof_t": -0.9759242799141659,
+          "fit_count": 1,
+          "maximum_candidate_share": 0.0,
+          "oof_evidence_passed": false,
+          "status": "evaluated",
+          "year": 2020
+        },
+        {
+          "final_oof_t": -1.9238190646576423,
+          "fit_count": 1,
+          "maximum_candidate_share": 0.0,
+          "oof_evidence_passed": false,
+          "status": "evaluated",
+          "year": 2021
+        },
+        {
+          "final_oof_t": 1.434472751631574,
+          "fit_count": 1,
+          "maximum_candidate_share": 0.0,
+          "oof_evidence_passed": false,
+          "status": "evaluated",
+          "year": 2022
+        },
+        {
+          "final_oof_t": null,
+          "fit_count": 49,
+          "maximum_candidate_share": 0.0,
+          "oof_evidence_passed": false,
+          "status": "no_selected_factors",
+          "year": 2023
+        },
+        {
+          "final_oof_t": -1.1648200195658276,
+          "fit_count": 1,
+          "maximum_candidate_share": 0.0,
+          "oof_evidence_passed": false,
+          "status": "evaluated",
+          "year": 2024
+        },
+        {
+          "final_oof_t": -0.5256454977238755,
+          "fit_count": 1,
+          "maximum_candidate_share": 0.0,
+          "oof_evidence_passed": false,
+          "status": "evaluated",
+          "year": 2025
+        }
+      ],
+      "maximum_actual_candidate_share": 0.0,
+      "portfolio_path_identical": true,
+      "promoted": false,
+      "year_count": 6
+    },
+    "publication_gate_assessment": {
+      "failed_rule_count": 4,
+      "failed_rules": [
+        {
+          "observed": 0.016434028322410477,
+          "operator": ">=",
+          "passed": false,
+          "path": "metrics.annualized_active_return",
+          "threshold": 0.03
+        },
+        {
+          "observed": 0.3884914936737565,
+          "operator": ">=",
+          "passed": false,
+          "path": "metrics.information_ratio",
+          "threshold": 0.8
+        },
+        {
+          "observed": -0.06635461931777875,
+          "operator": ">=",
+          "passed": false,
+          "path": "metrics.active_max_drawdown",
+          "threshold": -0.06
+        },
+        {
+          "observed": 0.1631616608370431,
+          "operator": "<=",
+          "passed": false,
+          "path": "metrics.rolling_beta_abs_deviation_p95",
+          "threshold": 0.1
+        }
+      ],
+      "passed": false,
+      "passed_rule_count": 8,
+      "rule_count": 12
+    },
+    "status": "research_release",
+    "version": "2.0.0"
+  },
+  "released_method": {
+    "active_max_drawdown": -0.06635461931777875,
+    "annualized_active_return": 0.016434028322410477,
+    "average_turnover": 0.0222113432674698,
+    "capm_alpha_annualized": 0.020153530496405385,
+    "capm_beta": 0.955885005860004,
+    "execution_cost_bps": 11.046471746278081,
+    "information_ratio": 0.3884914936737565,
+    "minimum_active_total_return": -0.0034169610692526,
+    "notional_fill_ratio": 0.9974005175423625,
+    "optimizer_solve_rate": 0.9896193771626297,
+    "positive_active_years": 5,
+    "relative_active_total_return": 0.09755035987355276,
+    "tracking_error": 0.04450657297506456,
+    "transaction_cost": 0.03605940209516004,
+    "trial_id": "a0_frozen_reference",
+    "year_count": 6
+  },
+  "schema_version": 2,
+  "scope": {
+    "benchmark": "CSI 500 total-return proxy",
+    "costs_included": true,
+    "end_date": "20251231",
+    "evaluation_role": "rolling_annual_research",
+    "fold_years": [
+      2020,
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "start_date": "20200108"
+  }
+}

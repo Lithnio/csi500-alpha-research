@@ -1,0 +1,24 @@
+factor_audit:
+  id: csi500-factor-audit-a2-price-volume-v2-discovery
+  base_config: full.yaml
+  start_date: "20170103"
+  end_date: "20191231"
+  max_financial_age_days: 180
+  output_subdirectory: factor-audits-a2-discovery
+  feature_provider: builtin_a2_daily
+  factors:
+    - market_residual_reversal_20
+    - market_residual_momentum_120_20
+    - turnover_volatility_20
+    - high_turnover_return_20
+    - intraday_strength_20
+    - limit_up_close_rate_20
+    - failed_limit_up_rate_20
+  gates:
+    min_mean_coverage: 0.80
+    min_active_date_rate: 0.80
+    min_ic_dates: 30
+    min_audited_years: 3
+    min_positive_year_fraction: 0.66
+    min_median_yearly_directed_ic: 0.0
+    min_median_yearly_net_q5_q1: 0.0

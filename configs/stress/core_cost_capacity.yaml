@@ -1,5 +1,5 @@
 stress:
-  id: core-cost-capacity-v1
+  id: core-cost-capacity-v2
   source_study: ../studies/core_baselines.yaml
   max_scenarios: 10
   baseline_parity_tolerance: 1.0e-8
@@ -9,11 +9,23 @@ scenarios:
     purpose: Reproduce the selected trial portfolio exactly before applying stress.
 
   - id: cost_0_5x
-    purpose: Halve linear, stamp-duty and impact cost assumptions.
+    purpose: Reoptimize after halving linear, stamp-duty and impact assumptions.
+    execution_mode: reoptimized
     cost_multiplier: 0.5
 
   - id: cost_2_0x
-    purpose: Double linear, stamp-duty and impact cost assumptions.
+    purpose: Reoptimize after doubling linear, stamp-duty and impact assumptions.
+    execution_mode: reoptimized
+    cost_multiplier: 2.0
+
+  - id: cost_0_5x_frozen
+    purpose: Replay identical gross trades with all modeled costs halved.
+    execution_mode: frozen_trades
+    cost_multiplier: 0.5
+
+  - id: cost_2_0x_frozen
+    purpose: Replay identical gross trades with all modeled costs doubled.
+    execution_mode: frozen_trades
     cost_multiplier: 2.0
 
   - id: aum_50m

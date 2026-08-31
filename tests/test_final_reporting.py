@@ -11,6 +11,7 @@ from csi500_alpha.final_reporting import (
     _recalculate_metrics,
     build_final_holdout_report,
 )
+from csi500_alpha.portfolio.audit import summarize_constraint_audits
 from csi500_alpha.utils import canonical_json, sha256_file, sha256_text
 
 
@@ -82,6 +83,7 @@ def _final_run_fixture(tmp_path: Path) -> Path:
     dates = pd.bdate_range("2026-01-05", periods=24).strftime("%Y%m%d")
     nav = pd.Series(1.0 - pd.Series(range(len(dates))) * 0.001)
     benchmark_nav = pd.Series(1.0 + pd.Series(range(len(dates))) * 0.001)
+    active_nav = nav / benchmark_nav
     daily = pd.DataFrame(
         {
             "trade_date": dates,
@@ -94,11 +96,8 @@ def _final_run_fixture(tmp_path: Path) -> Path:
             "benchmark_nav": benchmark_nav,
             "portfolio_return": nav.pct_change().fillna(0.0),
             "benchmark_return": benchmark_nav.pct_change().fillna(0.0),
-            "active_return": (
-                nav.pct_change().fillna(0.0)
-                - benchmark_nav.pct_change().fillna(0.0)
-            ),
-            "active_nav": 1.0,
+            "active_return": active_nav.pct_change().fillna(0.0),
+            "active_nav": active_nav,
         }
     )
     trades = pd.DataFrame(
@@ -113,6 +112,22 @@ def _final_run_fixture(tmp_path: Path) -> Path:
         }
     )
     metrics = _recalculate_metrics(daily, trades)
+    constraint_audits = pd.DataFrame(
+        {
+            "execution_date": [dates[1]],
+            "has_configured_breach": [False],
+            "has_policy_violation": [False],
+            "maximum_policy_violation": [0.0],
+            "actual_active_beta": [0.04],
+            "maximum_industry_active_exposure": [0.015],
+            "maximum_adv_participation": [0.02],
+            "maximum_target_weight_deviation": [0.001],
+            "actual_tracking_error": [0.03],
+            "beta_audit_complete": [True],
+        }
+    )
+    constraint_summary = summarize_constraint_audits(constraint_audits)
+    metrics.update(constraint_summary)
     evaluation = {
         "calibration": {
             "mean_daily_rank_ic": 0.01,
@@ -125,6 +140,7 @@ def _final_run_fixture(tmp_path: Path) -> Path:
             "notional_fill_ratio": 0.99,
         },
         "model_weights": {"minimum_effective_factor_count": 3.0},
+        "constraints": constraint_summary,
     }
     factor_names = ["factor_a", "factor_b", "factor_c"]
     summary = {
@@ -140,6 +156,8 @@ def _final_run_fixture(tmp_path: Path) -> Path:
             "signals": {"start": dates[0], "end": dates[-1]},
             "evaluation_signals": {"start": dates[0], "end": dates[-1]},
             "backtest": {"start": dates[0], "end": dates[-1]},
+            "positions": {"start": dates[1], "end": dates[1]},
+            "constraint_audits": {"start": dates[1], "end": dates[1]},
         },
         "metrics": metrics,
         "evaluation": evaluation,
@@ -202,6 +220,14 @@ def _final_run_fixture(tmp_path: Path) -> Path:
                 "maximum_violation": [0.0],
             }
         ),
+        "positions": pd.DataFrame(
+            {
+                "execution_date": [dates[1]],
+                "instrument": ["A"],
+                "actual_weight": [1.0],
+            }
+        ),
+        "constraint_audits": constraint_audits,
         "calibration_bins": pd.DataFrame(
             {
                 "bin": range(1, 6),

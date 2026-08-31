@@ -4,7 +4,8 @@ from pathlib import Path
 import pandas as pd
 
 from csi500_alpha.config import AppConfig, DateSettings
-from csi500_alpha.data.quality import validate_smoke
+from csi500_alpha.data.benchmark import materialize_benchmark_membership
+from csi500_alpha.data.quality import load_silver, validate_smoke
 
 
 def _quality_inputs() -> dict[str, pd.DataFrame]:
@@ -13,11 +14,23 @@ def _quality_inputs() -> dict[str, pd.DataFrame]:
     trade_date = "20250103"
     weights = pd.DataFrame(
         {
+            "index_code": "000905.SH",
             "snapshot_date": snapshot_date,
             "instrument": instruments,
             "weight_pct": 0.2,
             "weight": 0.002,
         }
+    )
+    calendar = pd.DataFrame(
+        {
+            "trade_date": [snapshot_date, trade_date],
+            "is_open": [1, 1],
+        }
+    )
+    membership_events, membership_intervals = materialize_benchmark_membership(
+        weights,
+        calendar,
+        registry=(),
     )
     bars = pd.DataFrame(
         {
@@ -31,17 +44,31 @@ def _quality_inputs() -> dict[str, pd.DataFrame]:
     )
     keys = bars[["trade_date", "instrument"]]
     return {
-        "calendar": pd.DataFrame(
-            {
-                "trade_date": [snapshot_date, trade_date],
-                "is_open": [1, 1],
-            }
-        ),
+        "calendar": calendar,
         "benchmark_weights": weights,
+        "benchmark_membership_events": membership_events,
+        "benchmark_membership_intervals": membership_intervals,
         "stock_bars": bars,
         "adjustments": keys.assign(adj_factor=1.0),
         "price_limits": keys.assign(up_limit=11.0, down_limit=9.0),
-        "index_bars": pd.DataFrame(),
+        "index_bars": pd.DataFrame(
+            {
+                "trade_date": [snapshot_date, trade_date],
+                "index_code": "000905.SH",
+                "total_return_index_code": "H00905.CSI",
+                "open": [100.0, 101.0],
+                "close": [100.0, 102.0],
+                "total_return_close": [200.0, 206.04],
+                "total_return_pre_close": [198.0, 200.0],
+                "total_return_factor": [2.0, 2.02],
+                "benchmark_open": [200.0, 204.02],
+                "benchmark_close": [200.0, 206.04],
+                "benchmark_pre_close": [198.0, 200.0],
+                "benchmark_method": (
+                    "total_return_close_with_price_open_adjustment"
+                ),
+            }
+        ),
     }
 
 
@@ -69,6 +96,67 @@ def test_quality_gate_passes_complete_synthetic_snapshot(tmp_path: Path) -> None
 
     assert not report.critical_failures
     assert (config.paths.quality_root / "data-quality.json").exists()
+
+
+def test_quality_gate_rejects_non_open_membership_effective_date(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    base = AppConfig.from_yaml(root / "configs" / "smoke.yaml")
+    config = replace(
+        base,
+        paths=replace(base.paths, data_root=tmp_path / "data"),
+        dates=DateSettings(
+            raw_start="20250102",
+            backtest_start="20250103",
+            end="20250103",
+        ),
+        download=replace(
+            base.download,
+            include_daily_basic=False,
+            include_suspensions=False,
+            include_instrument_master=False,
+            include_industry=False,
+        ),
+    )
+    tables = _quality_inputs()
+    tables["benchmark_membership_events"]["effective_from"] = "20250104"
+
+    report = validate_smoke(config, tables)
+
+    assert "benchmark_membership_event_integrity" in {
+        check.name for check in report.critical_failures
+    }
+
+
+def test_silver_loader_exposes_optional_financial_tables(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    base = AppConfig.from_yaml(root / "configs" / "smoke.yaml")
+    config = replace(
+        base,
+        paths=replace(base.paths, data_root=tmp_path / "data"),
+        download=replace(
+            base.download,
+            include_daily_basic=False,
+            include_suspensions=False,
+            include_instrument_master=False,
+            include_industry=False,
+        ),
+    )
+    config.paths.silver_root.mkdir(parents=True, exist_ok=True)
+    for name, table in _quality_inputs().items():
+        table.to_parquet(config.paths.silver_root / f"{name}.parquet", index=False)
+    financial_root = config.paths.silver_root / "financial"
+    financial_root.mkdir()
+    pd.DataFrame({"instrument": ["000001.SZ"]}).to_parquet(
+        financial_root / "income.parquet",
+        index=False,
+    )
+
+    tables = load_silver(config)
+
+    assert "financial_income" in tables
+    assert tables["financial_income"].iloc[0]["instrument"] == "000001.SZ"
 
 
 def test_quality_gate_rejects_duplicate_and_invalid_bar(tmp_path: Path) -> None:
@@ -103,6 +191,35 @@ def test_quality_gate_rejects_duplicate_and_invalid_bar(tmp_path: Path) -> None:
 
     assert "stock_bar_primary_key" in failures
     assert "stock_bar_ohlc" in failures
+
+
+def test_quality_gate_rejects_corrupted_total_return_identity(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    base = AppConfig.from_yaml(root / "configs" / "smoke.yaml")
+    config = replace(
+        base,
+        paths=replace(base.paths, data_root=tmp_path / "data"),
+        dates=DateSettings(
+            raw_start="20250102",
+            backtest_start="20250103",
+            end="20250103",
+        ),
+        download=replace(
+            base.download,
+            include_daily_basic=False,
+            include_suspensions=False,
+            include_instrument_master=False,
+            include_industry=False,
+        ),
+    )
+    tables = _quality_inputs()
+    tables["index_bars"].loc[1, "benchmark_open"] = 999.0
+
+    report = validate_smoke(config, tables)
+
+    assert "benchmark_total_return_identity" in {
+        check.name for check in report.critical_failures
+    }
 
 
 def test_dynamic_universe_missing_must_be_explained(tmp_path: Path) -> None:

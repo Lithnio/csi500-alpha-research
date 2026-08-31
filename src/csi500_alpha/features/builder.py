@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -7,9 +8,17 @@ import numpy as np
 import pandas as pd
 
 from csi500_alpha.config import FeatureSettings
-from csi500_alpha.features.catalog import FACTOR_NAMES
+from csi500_alpha.features.catalog import (
+    A2_DAILY_FACTOR_NAMES,
+    A3_ALL_DAILY_FACTOR_NAMES,
+    A3_DAILY_FACTOR_NAMES,
+    FACTOR_NAMES,
+)
+from csi500_alpha.logging_utils import ProgressCallback, ProgressLogger
 from csi500_alpha.research.industry import industry_asof
 from csi500_alpha.research.universe import benchmark_weights_asof, select_rebalance_dates
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -34,9 +43,18 @@ def build_raw_factor_panel(
     rebalance_every: int,
     index_bars: pd.DataFrame | None = None,
     industry_membership: pd.DataFrame | None = None,
+    benchmark_membership_intervals: pd.DataFrame | None = None,
     industry_transition_date: str = "20211213",
+    factor_names: Sequence[str] = FACTOR_NAMES,
+    progress_callback: ProgressCallback | None = None,
 ) -> pd.DataFrame:
     """Build raw factors using only rows dated at or before each decision date."""
+    requested_factors = tuple(factor_names)
+    unsupported = sorted(
+        set(requested_factors).difference(A3_ALL_DAILY_FACTOR_NAMES)
+    )
+    if unsupported:
+        raise ValueError(f"Unsupported built-in daily factors: {unsupported}")
     dates = sorted(str(date) for date in open_dates)
     close_raw = _pivot(market_panel, "adjusted_close", dates)
     close = close_raw.ffill()
@@ -49,7 +67,7 @@ def build_raw_factor_panel(
         index_frame["trade_date"] = index_frame["trade_date"].astype(str)
         index_close = (
             index_frame.drop_duplicates("trade_date", keep="last")
-            .set_index("trade_date")["close"]
+            .set_index("trade_date")["benchmark_close"]
             .pipe(pd.to_numeric, errors="coerce")
             .reindex(dates)
             .ffill()
@@ -150,6 +168,122 @@ def build_raw_factor_panel(
         "book_to_price": -np.log(pb.where(pb > 0)),
         "abnormal_turnover_reversal": reversal_5d * turnover_shock.clip(lower=0.0),
     }
+    expanded_names = set(A2_DAILY_FACTOR_NAMES) | set(A3_DAILY_FACTOR_NAMES)
+    if set(requested_factors).intersection(expanded_names):
+        adjusted_open = _pivot(market_panel, "adjusted_open", dates)
+        up_limit = _pivot(market_panel, "up_limit", dates)
+        lagged_beta = beta.shift(1)
+        market_residual_return = returns - lagged_beta.mul(
+            index_returns,
+            axis="index",
+        )
+        mean_turnover_60 = turnover.rolling(60, min_periods=60).mean()
+        turnover_ratio_60 = turnover.div(mean_turnover_60.where(mean_turnover_60 > 0))
+        high_turnover = np.log(turnover_ratio_60.where(turnover_ratio_60 > 0)).clip(
+            lower=0.0
+        )
+        high_turnover = high_turnover.mask(
+            turnover.eq(0.0) & mean_turnover_60.notna(),
+            0.0,
+        ).where(mean_turnover_60.notna() & valid_history)
+        intraday_return = np.log(
+            close_raw.where(close_raw > 0) / adjusted_open.where(adjusted_open > 0)
+        )
+        upper_limit_observed = high.notna() & raw_close.notna() & up_limit.notna()
+        hit_upper_limit = high.ge(up_limit * (1.0 - 1e-6))
+        close_at_upper_limit = raw_close.ge(up_limit * (1.0 - 1e-6))
+        limit_up_close = close_at_upper_limit.astype(float).where(upper_limit_observed)
+        failed_limit_up = (hit_upper_limit & ~close_at_upper_limit).astype(float).where(
+            upper_limit_observed
+        )
+        raw_factors.update(
+            {
+                "market_residual_reversal_20": -market_residual_return.rolling(
+                    20,
+                    min_periods=20,
+                ).sum(),
+                "market_residual_momentum_120_20": market_residual_return.shift(
+                    20
+                ).rolling(100, min_periods=100).sum(),
+                "turnover_volatility_20": np.log1p(
+                    turnover.clip(lower=0.0)
+                ).rolling(20, min_periods=20).std(ddof=1),
+                "high_turnover_return_20": (returns * high_turnover).rolling(
+                    20,
+                    min_periods=20,
+                ).sum(),
+                "intraday_strength_20": intraday_return.rolling(
+                    20,
+                    min_periods=20,
+                ).mean(),
+                "limit_up_close_rate_20": limit_up_close.rolling(
+                    20,
+                    min_periods=20,
+                ).mean(),
+                "failed_limit_up_rate_20": failed_limit_up.rolling(
+                    20,
+                    min_periods=20,
+                ).mean(),
+            }
+        )
+        if set(requested_factors).intersection(A3_DAILY_FACTOR_NAMES):
+            raw_open = _pivot(market_panel, "open", dates)
+            volume_shares = _pivot(market_panel, "volume_shares", dates)
+            down_limit = _pivot(market_panel, "down_limit", dates)
+            lower_limit_observed = (
+                low.notna() & raw_close.notna() & down_limit.notna()
+            )
+            hit_lower_limit = low.le(down_limit * (1.0 + 1e-6))
+            close_at_lower_limit = raw_close.le(
+                down_limit * (1.0 + 1e-6)
+            )
+            limit_down_close = close_at_lower_limit.astype(float).where(
+                lower_limit_observed
+            )
+            failed_limit_down = (
+                hit_lower_limit & ~close_at_lower_limit
+            ).astype(float).where(lower_limit_observed)
+            upper_limit_exclusion = close_at_upper_limit | close_at_upper_limit.shift(
+                1,
+                fill_value=False,
+            )
+            limit_adjusted_returns = returns.mask(
+                upper_limit_exclusion,
+                0.0,
+            )
+            prior_close = close.shift(1)
+            overnight_return = np.log(
+                adjusted_open.where(adjusted_open > 0)
+                / prior_close.where(prior_close > 0)
+            )
+            raw_factors.update(
+                {
+                    "limit_adjusted_momentum_120_20": (
+                        limit_adjusted_returns.shift(20)
+                        .rolling(100, min_periods=100)
+                        .sum()
+                    ),
+                    "alpha006_open_volume_corr_10": -raw_open.rolling(
+                        10,
+                        min_periods=10,
+                    ).corr(volume_shares),
+                    # The point-in-time benchmark price rank is applied below.
+                    "high_price_momentum_250_20": raw_factors[
+                        "momentum_250_20"
+                    ],
+                    "overnight_intraday_divergence_20": (
+                        overnight_return - intraday_return
+                    ).rolling(20, min_periods=20).mean(),
+                    "limit_down_close_rate_20": limit_down_close.rolling(
+                        20,
+                        min_periods=20,
+                    ).mean(),
+                    "failed_limit_down_rate_20": failed_limit_down.rolling(
+                        20,
+                        min_periods=20,
+                    ).mean(),
+                }
+            )
 
     decision_dates = select_rebalance_dates(
         dates,
@@ -159,9 +293,25 @@ def build_raw_factor_panel(
     )
     rows: list[pd.DataFrame] = []
     membership = industry_membership if industry_membership is not None else pd.DataFrame()
-    for decision_date in decision_dates:
-        benchmark = benchmark_weights_asof(benchmark_weights, decision_date)
+    progress = (
+        ProgressLogger(
+            LOGGER,
+            stage="raw_factor_panel",
+            total=len(decision_dates),
+            callback=progress_callback,
+        )
+        if decision_dates
+        else None
+    )
+    for position, decision_date in enumerate(decision_dates, start=1):
+        benchmark = benchmark_weights_asof(
+            benchmark_weights,
+            decision_date,
+            benchmark_membership_intervals,
+        )
         if benchmark.empty:
+            if progress is not None:
+                progress.update(position, context={"decision_date": decision_date})
             continue
         instruments = benchmark.index
         day = pd.DataFrame(
@@ -180,9 +330,19 @@ def build_raw_factor_panel(
             transition_date=industry_transition_date,
         )
         day["industry_code"] = day["instrument"].map(industries)
-        for name, values in raw_factors.items():
-            day[name] = values.loc[decision_date].reindex(instruments).to_numpy()
+        for name in requested_factors:
+            values = raw_factors[name].loc[decision_date].reindex(instruments)
+            if name == "high_price_momentum_250_20":
+                price_rank = (
+                    raw_close.loc[decision_date]
+                    .reindex(instruments)
+                    .rank(method="average", pct=True)
+                )
+                values = values * price_rank
+            day[name] = values.to_numpy()
         rows.append(day)
+        if progress is not None:
+            progress.update(position, context={"decision_date": decision_date})
     if not rows:
         columns = [
             "decision_date",
@@ -192,11 +352,11 @@ def build_raw_factor_panel(
             "total_mv_cny",
             "pb",
             "industry_code",
-            *FACTOR_NAMES,
+            *requested_factors,
         ]
         return pd.DataFrame(columns=columns)
     result = pd.concat(rows, ignore_index=True)
-    for factor in FACTOR_NAMES:
+    for factor in requested_factors:
         result[factor] = pd.to_numeric(result[factor], errors="coerce").replace(
             [np.inf, -np.inf],
             np.nan,
@@ -208,6 +368,7 @@ def process_factor_panel(
     raw_features: pd.DataFrame,
     settings: FeatureSettings,
     factor_names: Sequence[str] = FACTOR_NAMES,
+    progress_callback: ProgressCallback | None = None,
 ) -> ProcessedFactors:
     result = raw_features.copy()
     names = tuple(factor_names)
@@ -216,8 +377,22 @@ def process_factor_panel(
             raise ValueError(f"Raw feature panel is missing factor: {factor}")
         result[f"{factor}__z"] = np.nan
     quality_rows: list[dict[str, object]] = []
+    decision_count = int(result["decision_date"].nunique())
+    progress = (
+        ProgressLogger(
+            LOGGER,
+            stage="factor_preprocessing",
+            total=decision_count,
+            callback=progress_callback,
+        )
+        if decision_count
+        else None
+    )
 
-    for decision_date, frame in result.groupby("decision_date", sort=True):
+    for position, (decision_date, frame) in enumerate(
+        result.groupby("decision_date", sort=True),
+        start=1,
+    ):
         industry_coverage = float(frame["industry_code"].notna().mean())
         industry_enabled = industry_coverage >= settings.industry_coverage_threshold
         for factor in names:
@@ -263,6 +438,11 @@ def process_factor_panel(
                     "industry_coverage": industry_coverage,
                     "industry_neutralized": industry_enabled,
                 }
+            )
+        if progress is not None:
+            progress.update(
+                position,
+                context={"decision_date": str(decision_date)},
             )
     quality = pd.DataFrame(quality_rows)
     return ProcessedFactors(features=result, quality=quality)

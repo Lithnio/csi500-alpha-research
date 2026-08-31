@@ -194,10 +194,232 @@ FACTOR_CATALOG: tuple[FactorDefinition, ...] = (
 )
 
 
+# A2 candidates are deliberately kept outside ``FACTOR_CATALOG``.  The latter
+# is the frozen 25-factor daily catalog used by A0/A1; exposing A2 through a
+# separate provider prevents an old config with ``workflow.factors: []`` from
+# silently changing its research universe.
+A2_DAILY_FACTOR_CATALOG: tuple[FactorDefinition, ...] = (
+    FactorDefinition(
+        "market_residual_reversal_20",
+        1,
+        81,
+        "a2-v1",
+        ("adjusted_close", "benchmark_close"),
+        _PRICE_AVAILABILITY,
+        "reversal",
+        "require 60 prior aligned returns for lagged beta and 20 residual returns",
+        "-sum(r_t-j - beta_60_t-j-1 * benchmark_return_t-j, j=0..19)",
+        "Short-horizon market-residual price pressure may reverse.",
+    ),
+    FactorDefinition(
+        "market_residual_momentum_120_20",
+        1,
+        180,
+        "a2-v1",
+        ("adjusted_close", "benchmark_close"),
+        _PRICE_AVAILABILITY,
+        "momentum",
+        "require lagged 60-day beta and 100 residual returns ending 20 sessions ago",
+        "sum(r_t-j - beta_60_t-j-1 * benchmark_return_t-j, j=20..119)",
+        "Medium-horizon momentum may be clearer after removing market exposure.",
+    ),
+    FactorDefinition(
+        "turnover_volatility_20",
+        -1,
+        20,
+        "a2-v1",
+        ("turnover_rate",),
+        _BASIC_AVAILABILITY,
+        "liquidity",
+        "valid suspended sessions are zero turnover; require 20 open-calendar values",
+        "std(log(1 + turnover_rate), 20)",
+        "Unstable trading activity may proxy for speculative demand and crowding.",
+    ),
+    FactorDefinition(
+        "high_turnover_return_20",
+        -1,
+        79,
+        "a2-v2",
+        ("adjusted_close", "turnover_rate"),
+        "price and daily_basic inputs are available after close; tradable next open",
+        "trading",
+        "zero turnover contributes zero; require a positive trailing 60-day mean",
+        "sum(return * max(log(turnover_rate / mean_60(turnover_rate)), 0), 20)",
+        "High-turnover price pressure may reverse after speculative overreaction.",
+    ),
+    FactorDefinition(
+        "intraday_strength_20",
+        -1,
+        20,
+        "a2-v2",
+        ("adjusted_open", "adjusted_close"),
+        _PRICE_AVAILABILITY,
+        "trading",
+        "require 20 sessions with positive adjusted open and close",
+        "mean(log(adjusted_close / adjusted_open), 20)",
+        "Persistent intraday demand may reverse when it reflects retail overreaction.",
+    ),
+    FactorDefinition(
+        "limit_up_close_rate_20",
+        -1,
+        20,
+        "a2-v2",
+        ("high", "close", "up_limit"),
+        _PRICE_AVAILABILITY,
+        "price_limit",
+        "require 20 sessions with observed high, close and upper price limit",
+        "mean(1(close >= up_limit), 20)",
+        "Repeated upper-limit closes may identify lottery demand and subsequent overpricing.",
+    ),
+    FactorDefinition(
+        "failed_limit_up_rate_20",
+        -1,
+        20,
+        "a2-v1",
+        ("high", "close", "up_limit"),
+        _PRICE_AVAILABILITY,
+        "price_limit",
+        "require 20 sessions with observed high, close and upper price limit",
+        "mean(1(high >= up_limit and close < up_limit), 20)",
+        "Repeated failed upper-limit attempts may indicate exhausted speculative demand.",
+    ),
+)
+
+
+# A3 remains opt-in for the same reason as A2: adding research candidates must
+# never change an older experiment whose factor list was left empty.
+A3_DAILY_FACTOR_CATALOG: tuple[FactorDefinition, ...] = (
+    FactorDefinition(
+        "limit_adjusted_momentum_120_20",
+        1,
+        121,
+        "a3-v1",
+        ("adjusted_close", "close", "up_limit"),
+        _PRICE_AVAILABILITY,
+        "momentum",
+        "exclude returns on upper-limit closes and the following open session",
+        "sum(return * eligible, 100 sessions ending 20 sessions ago)",
+        "Medium-horizon momentum may be clearer after removing price-limit delays.",
+    ),
+    FactorDefinition(
+        "alpha006_open_volume_corr_10",
+        1,
+        10,
+        "a3-v1",
+        ("open", "volume_shares"),
+        _PRICE_AVAILABILITY,
+        "price_volume",
+        "require ten sessions with positive open and observed share volume",
+        "-corr(open, volume_shares, 10)",
+        "The public Alpha101 price-volume relation is retained as a baseline seed.",
+    ),
+    FactorDefinition(
+        "high_price_momentum_250_20",
+        1,
+        250,
+        "a3-v1",
+        ("adjusted_close", "close"),
+        _PRICE_AVAILABILITY,
+        "momentum",
+        "rank the unadjusted price within the point-in-time benchmark universe",
+        "momentum_250_20 * cross_section_rank(close)",
+        "China momentum evidence is stronger among relatively high-priced stocks.",
+    ),
+    FactorDefinition(
+        "overnight_intraday_divergence_20",
+        1,
+        21,
+        "a3-v2",
+        ("adjusted_open", "adjusted_close"),
+        _PRICE_AVAILABILITY,
+        "trading",
+        "require adjusted prior close, open and close for twenty sessions",
+        "mean(log(open / close_lag1) - log(close / open), 20)",
+        "Persistent overnight demand relative to intraday demand may continue in China.",
+    ),
+    FactorDefinition(
+        "limit_down_close_rate_20",
+        1,
+        20,
+        "a3-v1",
+        ("low", "close", "down_limit"),
+        _PRICE_AVAILABILITY,
+        "price_limit",
+        "require twenty sessions with observed low, close and lower price limit",
+        "mean(1(close <= down_limit), 20)",
+        "Repeated lower-limit closes may subsequently reverse after forced selling.",
+    ),
+    FactorDefinition(
+        "failed_limit_down_rate_20",
+        1,
+        20,
+        "a3-v1",
+        ("low", "close", "down_limit"),
+        _PRICE_AVAILABILITY,
+        "price_limit",
+        "require twenty sessions with observed low, close and lower price limit",
+        "mean(1(low <= down_limit and close > down_limit), 20)",
+        "Recovery from an intraday lower-limit hit may reveal buying absorption.",
+    ),
+)
+
+
 FACTOR_NAMES: tuple[str, ...] = tuple(definition.name for definition in FACTOR_CATALOG)
 DIRECTIONS: dict[str, int] = {
     definition.name: definition.direction for definition in FACTOR_CATALOG
 }
 FAMILIES: dict[str, str] = {
     definition.name: definition.family for definition in FACTOR_CATALOG
+}
+
+A2_DAILY_FACTOR_NAMES: tuple[str, ...] = tuple(
+    definition.name for definition in A2_DAILY_FACTOR_CATALOG
+)
+A2_DAILY_DIRECTIONS: dict[str, int] = {
+    definition.name: definition.direction for definition in A2_DAILY_FACTOR_CATALOG
+}
+A2_DAILY_FAMILIES: dict[str, str] = {
+    definition.name: definition.family for definition in A2_DAILY_FACTOR_CATALOG
+}
+ALL_DAILY_FACTOR_CATALOG: tuple[FactorDefinition, ...] = (
+    *FACTOR_CATALOG,
+    *A2_DAILY_FACTOR_CATALOG,
+)
+ALL_DAILY_FACTOR_NAMES: tuple[str, ...] = (
+    *FACTOR_NAMES,
+    *A2_DAILY_FACTOR_NAMES,
+)
+ALL_DAILY_DIRECTIONS: dict[str, int] = {
+    **DIRECTIONS,
+    **A2_DAILY_DIRECTIONS,
+}
+ALL_DAILY_FAMILIES: dict[str, str] = {
+    **FAMILIES,
+    **A2_DAILY_FAMILIES,
+}
+
+A3_DAILY_FACTOR_NAMES: tuple[str, ...] = tuple(
+    definition.name for definition in A3_DAILY_FACTOR_CATALOG
+)
+A3_DAILY_DIRECTIONS: dict[str, int] = {
+    definition.name: definition.direction for definition in A3_DAILY_FACTOR_CATALOG
+}
+A3_DAILY_FAMILIES: dict[str, str] = {
+    definition.name: definition.family for definition in A3_DAILY_FACTOR_CATALOG
+}
+A3_ALL_DAILY_FACTOR_CATALOG: tuple[FactorDefinition, ...] = (
+    *ALL_DAILY_FACTOR_CATALOG,
+    *A3_DAILY_FACTOR_CATALOG,
+)
+A3_ALL_DAILY_FACTOR_NAMES: tuple[str, ...] = (
+    *ALL_DAILY_FACTOR_NAMES,
+    *A3_DAILY_FACTOR_NAMES,
+)
+A3_ALL_DAILY_DIRECTIONS: dict[str, int] = {
+    **ALL_DAILY_DIRECTIONS,
+    **A3_DAILY_DIRECTIONS,
+}
+A3_ALL_DAILY_FAMILIES: dict[str, str] = {
+    **ALL_DAILY_FAMILIES,
+    **A3_DAILY_FAMILIES,
 }

@@ -55,7 +55,8 @@ def compute_factor_diagnostics(
                         method="spearman",
                     )
                 )
-                percentile = sample[score_column].rank(method="first", pct=True)
+                directed_score = direction * sample[score_column]
+                percentile = directed_score.rank(method="first", pct=True)
                 quintile = np.ceil(percentile * 5.0).clip(1, 5).astype(int)
                 grouped = sample.groupby(quintile)["forward_active_return"].mean()
                 for group, value in grouped.items():
@@ -211,5 +212,13 @@ def _average_factor_correlation(
     if not matrices:
         return pd.DataFrame(index=names, columns=names, dtype=float)
     stacked = np.stack([matrix.to_numpy(dtype=float) for matrix in matrices])
-    average = np.nanmean(stacked, axis=0)
+    finite = np.isfinite(stacked)
+    counts = finite.sum(axis=0)
+    totals = np.where(finite, stacked, 0.0).sum(axis=0)
+    average = np.divide(
+        totals,
+        counts,
+        out=np.full(totals.shape, np.nan, dtype=float),
+        where=counts > 0,
+    )
     return pd.DataFrame(average, index=names, columns=names)

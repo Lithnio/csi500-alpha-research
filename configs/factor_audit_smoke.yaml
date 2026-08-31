@@ -1,0 +1,16 @@
+factor_audit:
+  id: csi500-factor-audit-smoke
+  base_config: full.yaml
+  start_date: "20250102"
+  end_date: "20250331"
+  max_financial_age_days: 180
+  output_subdirectory: factor-audit-smoke
+  factors: []
+  gates:
+    min_mean_coverage: 0.50
+    min_active_date_rate: 0.50
+    min_ic_dates: 5
+    min_audited_years: 1
+    min_positive_year_fraction: 0.0
+    min_median_yearly_directed_ic: -1.0
+    min_median_yearly_net_q5_q1: -1.0

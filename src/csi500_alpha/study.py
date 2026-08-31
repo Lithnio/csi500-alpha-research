@@ -504,127 +504,132 @@ class StudyRunner:
         return pd.DataFrame(rows)
 
     def _selection(self, manifests: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-        eligible: list[tuple[str, float, tuple[float, ...]]] = []
-        ranking_metrics: dict[str, dict[str, float]] = {}
-        rejection_reasons: dict[str, list[str]] = {}
-        for manifest in manifests:
-            trial = _mapping(manifest.get("trial", {}), "trial manifest trial")
-            trial_id = str(trial.get("id", ""))
-            if manifest.get("status") != "completed":
-                error = manifest.get("error")
-                detail = error.get("message") if isinstance(error, dict) else None
-                rejection_reasons[trial_id] = [
-                    f"trial_status={manifest.get('status')}",
-                    *([f"error={detail}"] if detail else []),
-                ]
-                continue
-            summary = manifest.get("summary")
-            gate_failures = _gate_failures(summary, self.spec.selection.gates)
-            if gate_failures:
-                rejection_reasons[trial_id] = gate_failures
-                continue
-            primary_rule = self.spec.selection.primary
-            primary_value = _finite_number(
-                _resolve_path(summary, primary_rule.path)
-            )
-            observed_metrics: dict[str, float] = {}
-            invalid: list[str] = []
-            if primary_value is None:
-                invalid.append(f"non_finite_metric={primary_rule.path}")
-            else:
-                observed_metrics[primary_rule.path] = primary_value
-            tie_values: list[float] = []
-            for rule in self.spec.selection.tie_breakers:
-                value = _finite_number(_resolve_path(summary, rule.path))
-                if value is None:
-                    invalid.append(f"non_finite_metric={rule.path}")
-                    continue
-                observed_metrics[rule.path] = value
-                tie_values.append(
-                    -value if rule.direction == "maximize" else value
-                )
-            if invalid:
-                rejection_reasons[trial_id] = invalid
-                continue
-            if primary_value is None:
-                raise AssertionError("Validated primary metric unexpectedly missing")
-            oriented_primary = (
-                -primary_value
-                if primary_rule.direction == "maximize"
-                else primary_value
-            )
-            eligible.append((trial_id, oriented_primary, tuple(tie_values)))
-            ranking_metrics[trial_id] = observed_metrics
-
-        best_primary = min((item[1] for item in eligible), default=None)
-        shortlisted = [
-            item
-            for item in eligible
-            if best_primary is not None
-            and item[1] <= best_primary + self.spec.selection.primary_tolerance + 1e-12
-        ]
-        ranked_shortlist = sorted(
-            shortlisted,
-            key=lambda item: (item[2], item[1], item[0]),
-        )
-        outside = [item for item in eligible if item not in shortlisted]
-        ranked_outside = sorted(outside, key=lambda item: (item[1], item[2], item[0]))
-        ranked = [*ranked_shortlist, *ranked_outside]
-        selected_trial_id = ranked_shortlist[0][0] if ranked_shortlist else None
-        eligible_ids = [trial_id for trial_id, _, _ in ranked]
-        shortlisted_ids = [trial_id for trial_id, _, _ in ranked_shortlist]
-        for trial_id in eligible_ids:
-            if trial_id != selected_trial_id:
-                rejection_reasons[trial_id] = [
-                    (
-                        "ranked_below_selected_trial_within_primary_band"
-                        if trial_id in shortlisted_ids
-                        else "outside_primary_equivalence_band"
-                    )
-                ]
-        return {
-            "schema_version": 1,
-            "study_id": self.spec.study_id,
-            "created_at": utc_now(),
-            "rule": self.spec.selection.to_dict(),
-            "selected_trial_id": selected_trial_id,
-            "eligible_trial_ids": eligible_ids,
-            "shortlisted_trial_ids": shortlisted_ids,
-            "ranking": [
-                {
-                    "rank": rank,
-                    "trial_id": trial_id,
-                    "metrics": ranking_metrics[trial_id],
-                    "within_primary_equivalence_band": trial_id in shortlisted_ids,
-                    "primary_gap_from_best": (
-                        oriented_primary - best_primary
-                        if best_primary is not None
-                        else None
-                    ),
-                }
-                for rank, (trial_id, oriented_primary, _) in enumerate(
-                    ranked,
-                    start=1,
-                )
-            ],
-            "rejected_trials": [
-                {"trial_id": trial_id, "reasons": rejection_reasons[trial_id]}
-                for trial_id in sorted(rejection_reasons)
-            ],
-            "multiplicity": {
-                "declared_trial_count": len(self.spec.trials),
-                "completed_trial_count": sum(
-                    manifest.get("status") == "completed" for manifest in manifests
-                ),
-                "eligible_candidate_count": len(eligible),
-            },
-        }
+        return select_study_candidates(self.spec, manifests)
 
     @staticmethod
     def _read_json(path: Path) -> dict[str, Any]:
         if not path.exists():
             return {}
         return json.loads(path.read_text(encoding="utf-8"))
+
+
+def select_study_candidates(
+    spec: StudySpec,
+    manifests: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Apply one Study selection rule to completed candidate summaries."""
+
+    eligible: list[tuple[str, float, tuple[float, ...]]] = []
+    ranking_metrics: dict[str, dict[str, float]] = {}
+    rejection_reasons: dict[str, list[str]] = {}
+    for manifest in manifests:
+        trial = _mapping(manifest.get("trial", {}), "trial manifest trial")
+        trial_id = str(trial.get("id", ""))
+        if manifest.get("status") != "completed":
+            error = manifest.get("error")
+            detail = error.get("message") if isinstance(error, dict) else None
+            rejection_reasons[trial_id] = [
+                f"trial_status={manifest.get('status')}",
+                *([f"error={detail}"] if detail else []),
+            ]
+            continue
+        summary = manifest.get("summary")
+        gate_failures = _gate_failures(summary, spec.selection.gates)
+        if gate_failures:
+            rejection_reasons[trial_id] = gate_failures
+            continue
+        primary_rule = spec.selection.primary
+        primary_value = _finite_number(_resolve_path(summary, primary_rule.path))
+        observed_metrics: dict[str, float] = {}
+        invalid: list[str] = []
+        if primary_value is None:
+            invalid.append(f"non_finite_metric={primary_rule.path}")
+        else:
+            observed_metrics[primary_rule.path] = primary_value
+        tie_values: list[float] = []
+        for rule in spec.selection.tie_breakers:
+            value = _finite_number(_resolve_path(summary, rule.path))
+            if value is None:
+                invalid.append(f"non_finite_metric={rule.path}")
+                continue
+            observed_metrics[rule.path] = value
+            tie_values.append(-value if rule.direction == "maximize" else value)
+        if invalid:
+            rejection_reasons[trial_id] = invalid
+            continue
+        if primary_value is None:
+            raise AssertionError("Validated primary metric unexpectedly missing")
+        oriented_primary = (
+            -primary_value
+            if primary_rule.direction == "maximize"
+            else primary_value
+        )
+        eligible.append((trial_id, oriented_primary, tuple(tie_values)))
+        ranking_metrics[trial_id] = observed_metrics
+
+    best_primary = min((item[1] for item in eligible), default=None)
+    shortlisted = [
+        item
+        for item in eligible
+        if best_primary is not None
+        and item[1] <= best_primary + spec.selection.primary_tolerance + 1e-12
+    ]
+    ranked_shortlist = sorted(
+        shortlisted,
+        key=lambda item: (item[2], item[1], item[0]),
+    )
+    outside = [item for item in eligible if item not in shortlisted]
+    ranked_outside = sorted(outside, key=lambda item: (item[1], item[2], item[0]))
+    ranked = [*ranked_shortlist, *ranked_outside]
+    selected_trial_id = ranked_shortlist[0][0] if ranked_shortlist else None
+    eligible_ids = [trial_id for trial_id, _, _ in ranked]
+    shortlisted_ids = [trial_id for trial_id, _, _ in ranked_shortlist]
+    for trial_id in eligible_ids:
+        if trial_id != selected_trial_id:
+            rejection_reasons[trial_id] = [
+                (
+                    "ranked_below_selected_trial_within_primary_band"
+                    if trial_id in shortlisted_ids
+                    else "outside_primary_equivalence_band"
+                )
+            ]
+    return {
+        "schema_version": 1,
+        "study_id": spec.study_id,
+        "created_at": utc_now(),
+        "rule": spec.selection.to_dict(),
+        "selected_trial_id": selected_trial_id,
+        "eligible_trial_ids": eligible_ids,
+        "shortlisted_trial_ids": shortlisted_ids,
+        "ranking": [
+            {
+                "rank": rank,
+                "trial_id": trial_id,
+                "metrics": ranking_metrics[trial_id],
+                "within_primary_equivalence_band": trial_id in shortlisted_ids,
+                "primary_gap_from_best": (
+                    oriented_primary - best_primary
+                    if best_primary is not None
+                    else None
+                ),
+            }
+            for rank, (trial_id, oriented_primary, _) in enumerate(
+                ranked,
+                start=1,
+            )
+        ],
+        "rejected_trials": [
+            {"trial_id": trial_id, "reasons": rejection_reasons[trial_id]}
+            for trial_id in sorted(rejection_reasons)
+        ],
+        "multiplicity": {
+            "declared_trial_count": len(spec.trials),
+            "completed_trial_count": sum(
+                manifest.get("status") == "completed" for manifest in manifests
+            ),
+            "eligible_candidate_count": len(eligible),
+        },
+    }
 
 
 def study_plan(config_path: str | Path) -> dict[str, Any]:

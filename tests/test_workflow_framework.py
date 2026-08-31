@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,11 +22,12 @@ from csi500_alpha.config import (
 from csi500_alpha.errors import ConfigurationError
 from csi500_alpha.pipeline import _assert_stage_artifact_boundaries
 from csi500_alpha.workflow.components import default_component_registry
-from csi500_alpha.workflow.contracts import FeatureBuildContext
+from csi500_alpha.workflow.contracts import FeatureBuildContext, SelectionResult
 from csi500_alpha.workflow.orchestrator import (
     ResearchWorkflow,
     _industry_exposures,
     _name_history_restrictions,
+    _style_exposures,
 )
 from csi500_alpha.workflow.signals import WalkForwardSignalEngine
 
@@ -76,6 +78,29 @@ def test_industry_exposures_include_explicit_missing_bucket() -> None:
     assert (exposures[exposure_columns].sum(axis=1) == 1.0).all()
 
 
+def test_style_exposures_preserve_raw_beta_and_named_standardized_styles() -> None:
+    features = pd.DataFrame(
+        {
+            "decision_date": ["20250103", "20250103"],
+            "instrument": ["A", "B"],
+            "beta_60": [0.8, 1.2],
+            "size__z": [-1.0, 1.0],
+            "momentum_120_20__z": [0.5, -0.5],
+        }
+    )
+
+    styles = _style_exposures(features)
+
+    assert styles.columns.tolist() == [
+        "trade_date",
+        "instrument",
+        "market_beta_60",
+        "small_size_z",
+        "momentum_120_20_z",
+    ]
+    assert styles["market_beta_60"].tolist() == [0.8, 1.2]
+
+
 def test_walk_forward_ridge_never_uses_unavailable_labels() -> None:
     dates = ["20250102", "20250109", "20250116", "20250123"]
     rows = []
@@ -96,6 +121,7 @@ def test_walk_forward_ridge_never_uses_unavailable_labels() -> None:
     registry = default_component_registry()
 
     def run(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        progress_events: list[Mapping[str, object]] = []
         engine = WalkForwardSignalEngine(
             selector=registry.create_selector("all", {}),
             model_factory=lambda: registry.create_model(
@@ -115,7 +141,11 @@ def test_walk_forward_ridge_never_uses_unavailable_labels() -> None:
             ["f"],
             prediction_start=dates[2],
             prediction_end=dates[3],
+            progress_callback=progress_events.append,
         )
+        assert progress_events[-1]["stage"] == "walk_forward_signals"
+        assert progress_events[-1]["status"] == "completed"
+        assert progress_events[-1]["completed_units"] == 2
         return result.signals, result.model_fits
 
     original_signals, fits = run(panel)
@@ -128,6 +158,77 @@ def test_walk_forward_ridge_never_uses_unavailable_labels() -> None:
     assert (
         fits["max_label_available_date"].astype(str) < fits["fit_date"].astype(str)
     ).all()
+
+
+def test_empty_refit_selection_deactivates_stale_model_and_emits_missing_signal() -> None:
+    dates = ["20250102", "20250109", "20250116", "20250123"]
+    panel = pd.DataFrame(
+        [
+            {
+                "decision_date": date,
+                "instrument": instrument,
+                "f__z": value,
+                "label_available_date": date,
+                "forward_active_return": 0.01 * value,
+            }
+            for date in dates
+            for instrument, value in (("A", -1.0), ("B", 0.0), ("C", 1.0))
+        ]
+    )
+
+    class CloseOnSecondRefit:
+        name = "close_on_second_refit"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def select(
+            self,
+            training: pd.DataFrame,
+            candidates: Sequence[str],
+            *,
+            as_of_date: str,
+        ) -> SelectionResult:
+            del training, as_of_date
+            self.calls += 1
+            selected = candidates if self.calls == 1 else ()
+            return SelectionResult(
+                factor_names=selected,
+                diagnostics={"selected_count": len(selected)},
+            )
+
+    registry = default_component_registry()
+    engine = WalkForwardSignalEngine(
+        selector=CloseOnSecondRefit(),
+        model_factory=lambda: registry.create_model(
+            "direction_equal_weight",
+            {"min_factor_fraction": 1.0},
+            {"f": 1},
+        ),
+        refit_every=1,
+    )
+
+    result = engine.run(
+        panel,
+        ["f"],
+        prediction_start=dates[-2],
+        prediction_end=dates[-1],
+    )
+
+    assert result.model_fits["status"].tolist() == [
+        "fitted",
+        "no_selected_factors",
+    ]
+    assert result.model_fits["action"].tolist() == [
+        "replace_model",
+        "deactivate_model",
+    ]
+    by_date = result.signals.groupby("decision_date")["score"]
+    assert by_date.get_group(dates[-2]).notna().all()
+    assert by_date.get_group(dates[-1]).isna().all()
+    assert result.signals.loc[
+        result.signals["decision_date"].eq(dates[-1]), "selected_factor_count"
+    ].eq(0).all()
 
 
 class ToyFactorProvider:
@@ -267,8 +368,8 @@ def test_custom_factor_provider_runs_through_optimizer_and_event_backtest() -> N
         "index_bars": pd.DataFrame(
             {
                 "trade_date": dates,
-                "open": np.linspace(100.0, 101.7, len(dates)),
-                "close": np.linspace(100.0, 101.7, len(dates)),
+                "benchmark_open": np.linspace(100.0, 101.7, len(dates)),
+                "benchmark_close": np.linspace(100.0, 101.7, len(dates)),
             }
         ),
         "stock_bars": stock_bars,
@@ -284,6 +385,48 @@ def test_custom_factor_provider_runs_through_optimizer_and_event_backtest() -> N
 
     result = ResearchWorkflow(config, registry=registry).run(tables)
     _assert_stage_artifact_boundaries(config, result)
+
+    shared_config = replace(
+        config,
+        experiment=replace(
+            config.experiment,
+            stage="walk_forward",
+            protocol_id="toy-shared-layer-v1",
+        ),
+    )
+    shared = ResearchWorkflow(shared_config, registry=registry).prepare(tables)
+    fold_workflow = ResearchWorkflow(config, registry=registry)
+    fold_prepared = fold_workflow.fold_view(tables, shared)
+    shared_result = fold_workflow.run_prepared(tables, fold_prepared)
+    _assert_stage_artifact_boundaries(config, shared_result)
+
+    alternate_config = replace(
+        config,
+        experiment=replace(
+            config.experiment,
+            protocol_id="toy-alternate-candidate-v1",
+        ),
+    )
+    alternate_result = ResearchWorkflow(
+        alternate_config,
+        registry=registry,
+    ).run_prepared(tables, fold_prepared)
+
+    pd.testing.assert_frame_equal(result.raw_features, shared_result.raw_features)
+    pd.testing.assert_frame_equal(
+        result.processed.features,
+        shared_result.processed.features,
+    )
+    pd.testing.assert_frame_equal(result.labels, shared_result.labels)
+    pd.testing.assert_frame_equal(
+        result.evaluation_signals,
+        shared_result.evaluation_signals,
+    )
+    assert result.backtest.metrics == shared_result.backtest.metrics
+    assert alternate_result.sample_policy["protocol_id"] == (
+        "toy-alternate-candidate-v1"
+    )
+    assert alternate_result.backtest.metrics == shared_result.backtest.metrics
 
     assert result.factor_names == ("toy",)
     assert result.signals["score"].notna().all()
@@ -312,7 +455,10 @@ def test_custom_factor_provider_runs_through_optimizer_and_event_backtest() -> N
         ["open", "high", "low", "close"],
     ] *= 100.0
     future_index = revised_tables["index_bars"]["trade_date"].astype(str) > stage_end
-    revised_tables["index_bars"].loc[future_index, ["open", "close"]] *= 100.0
+    revised_tables["index_bars"].loc[
+        future_index,
+        ["benchmark_open", "benchmark_close"],
+    ] *= 100.0
 
     revised = ResearchWorkflow(config, registry=registry).run(revised_tables)
 

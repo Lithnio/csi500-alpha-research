@@ -1,0 +1,82 @@
+annual_study:
+  id: a32-turnover-budgeted-residual-v1-canonical-annual-2020-2025
+  method_study: ../studies/a32_turnover_budgeted_residual_v1.yaml
+  years: [2020, 2021, 2022, 2023, 2024, 2025]
+  train_start: "20170103"
+  embargo_days: 5
+  max_workers: 2
+
+publication_gates:
+  - path: quality_passed
+    operator: "=="
+    value: true
+  - path: optimizer_solve_rate
+    operator: ">="
+    value: 0.95
+  - path: metrics.annualized_active_return
+    operator: ">="
+    value: 0.03
+  - path: metrics.information_ratio
+    operator: ">="
+    value: 0.80
+  - path: evaluation.yearly.positive_active_years
+    operator: ">="
+    value: 5
+  - path: evaluation.yearly.minimum_active_total_return
+    operator: ">="
+    value: -0.03
+  - path: metrics.active_max_drawdown
+    operator: ">="
+    value: -0.06
+  - path: metrics.rolling_beta_abs_deviation_p95
+    operator: "<="
+    value: 0.10
+  - path: evaluation.constraints.post_trade_material_configured_breach_fraction
+    operator: "<="
+    value: 0.10
+  - path: evaluation.constraints.post_trade_material_execution_deterioration_fraction
+    operator: "<="
+    value: 0.10
+  - path: evaluation.model_weights.maximum_single_factor_weight
+    operator: "<="
+    value: 0.200001
+  - path: evaluation.model_weights.maximum_family_weight
+    operator: "<="
+    value: 0.350001
+
+history:
+  - id: a0-factor-family-v2
+    role: frozen_control
+    status: retained
+    included_in_selection: false
+    note: The 42-factor A0 method remains the immutable reference.
+  - id: a1-risk-translation-v1-annual-2020-2025
+    role: prior_risk_diagnostic
+    status: completed_without_promotion
+    included_in_selection: false
+    note: Risk-model changes were too small and unstable to replace A0.
+  - id: a2-factor-expansion-v1-annual-2020-2025
+    role: prior_factor_diagnostic
+    status: completed_without_promotion
+    included_in_selection: false
+    note: Full-pool reselection raised mean return but worsened stability and concentration of yearly contribution.
+  - id: a3-incremental-synthesis-v1-annual-2020-2025
+    role: prior_2020_translation_diagnostic
+    status: completed_without_promotion
+    included_in_selection: false
+    note: Incremental admission survived, but raw-factor synthesis diluted residual information in the 2020 fold.
+  - id: a31-residual-sleeve-v1-annual-2020-2025
+    role: prior_2020_residual_sleeve_diagnostic
+    status: completed_without_promotion
+    included_in_selection: false
+    note: Candidate information improved gross spread but excess score churn and cost reduced 2020 net active return.
+  - id: a32-turnover-budgeted-residual-v1-annual-2020-2025
+    role: cross_host_data_mismatch_diagnostic
+    status: excluded_from_selection
+    included_in_selection: false
+    note: The workstation run rebuilt mutable reference data after absolute cache paths became invalid; it is retained only as a non-comparable diagnostic.
+  - id: v1-revealed-2026-h1
+    role: revealed_diagnostic
+    status: failed_out_of_sample
+    included_in_selection: false
+    note: Retained as a disclosed failure and never reused as independent evidence.

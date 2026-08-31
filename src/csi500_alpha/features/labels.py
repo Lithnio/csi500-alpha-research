@@ -28,7 +28,7 @@ def build_forward_labels(
         columns="instrument",
         values="adjusted_open",
     ).reindex(dates)
-    index_open = index_bars.set_index("trade_date")["open"].reindex(dates)
+    index_open = index_bars.set_index("trade_date")["benchmark_open"].reindex(dates)
     entry_stock = stock_open.shift(-1)
     exit_stock = stock_open.shift(-(horizon + 1))
     stock_return = exit_stock / entry_stock - 1.0
@@ -88,7 +88,9 @@ def build_forward_labels(
             }
         )
         day["forward_active_return"] = (
-            day["forward_stock_return"] - day["forward_benchmark_return"]
+            (1.0 + day["forward_stock_return"])
+            / (1.0 + day["forward_benchmark_return"])
+            - 1.0
         )
         day["label_valid"] = day["label_status"].eq("valid")
         rows.append(day)

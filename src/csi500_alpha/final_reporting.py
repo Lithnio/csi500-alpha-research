@@ -7,11 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from csi500_alpha.data.storage import write_json_atomic
 from csi500_alpha.errors import ConfigurationError
+from csi500_alpha.execution.backtest import (
+    calculate_backtest_metrics,
+    enrich_active_performance,
+)
+from csi500_alpha.portfolio.audit import summarize_constraint_audits
 from csi500_alpha.reporting import (
     _BLUE,
     _BLUE_OPEN,
@@ -36,6 +40,8 @@ _REQUIRED_ARTIFACTS = {
     "metrics",
     "model_fits",
     "optimization",
+    "positions",
+    "constraint_audits",
     "research_evaluation",
     "signals",
     "trades",
@@ -49,6 +55,8 @@ _RANGE_SPECS = {
     "signals": ("signals.parquet", "decision_date"),
     "evaluation_signals": ("evaluation-signals.parquet", "decision_date"),
     "backtest": ("daily.parquet", "trade_date"),
+    "positions": ("positions.parquet", "execution_date"),
+    "constraint_audits": ("constraint-audits.parquet", "execution_date"),
 }
 _KEY_SPECS = {
     "daily.parquet": ("trade_date",),
@@ -61,6 +69,8 @@ _KEY_SPECS = {
     "targets.parquet": ("execution_date", "instrument"),
     "trades.parquet": ("signal_date", "trade_date", "instrument"),
     "optimization.parquet": ("decision_date",),
+    "positions.parquet": ("execution_date", "instrument"),
+    "constraint-audits.parquet": ("execution_date",),
     "gold/features.parquet": ("decision_date", "instrument"),
     "gold/raw_features.parquet": ("decision_date", "instrument"),
     "gold/labels.parquet": ("decision_date", "instrument"),
@@ -168,8 +178,11 @@ def build_final_holdout_report(
     trades_path = run_path / "trades.parquet"
     daily = pd.read_parquet(daily_path)
     trades = pd.read_parquet(trades_path)
+    constraint_audits = pd.read_parquet(run_path / "constraint-audits.parquet")
     _validate_daily(daily)
     recalculated = _recalculate_metrics(daily, trades)
+    constraint_summary = summarize_constraint_audits(constraint_audits)
+    recalculated.update(constraint_summary)
     metric_differences = _metric_differences(metrics, recalculated)
     maximum_metric_difference = max(metric_differences.values(), default=0.0)
     if maximum_metric_difference > 1.0e-12:
@@ -214,6 +227,14 @@ def build_final_holdout_report(
     )
     calibration = _mapping(evaluation.get("calibration"), "Calibration evaluation")
     execution = _mapping(evaluation.get("execution"), "Execution evaluation")
+    reported_constraints = _mapping(
+        evaluation.get("constraints"),
+        "Constraint evaluation",
+    )
+    if canonical_json(reported_constraints) != canonical_json(constraint_summary):
+        raise ConfigurationError(
+            "Constraint evaluation does not reproduce from post-trade audits"
+        )
     top_weights = _final_factor_weights(run_path)
     if not top_weights:
         raise ConfigurationError("Final model has no material factor weights")
@@ -292,6 +313,18 @@ def build_final_holdout_report(
             "optimizer_attempts": int(len(optimization)),
             "optimizer_solved": solved,
             "maximum_optimizer_constraint_violation": maximum_violation,
+            "post_trade_audit_count": constraint_summary.get(
+                "post_trade_audit_count"
+            ),
+            "post_trade_policy_violation_fraction": constraint_summary.get(
+                "post_trade_policy_violation_fraction"
+            ),
+            "maximum_post_trade_policy_violation": constraint_summary.get(
+                "maximum_post_trade_policy_violation"
+            ),
+            "beta_audit_complete_fraction": constraint_summary.get(
+                "beta_audit_complete_fraction"
+            ),
         },
         "warnings": warnings,
         "limitations": [
@@ -341,6 +374,23 @@ def build_final_holdout_report(
             "tracking_error": metrics.get("tracking_error"),
             "information_ratio": metrics.get("information_ratio"),
             "max_drawdown": metrics.get("max_drawdown"),
+            "active_max_drawdown": metrics.get("active_max_drawdown"),
+            "portfolio_max_drawdown": metrics.get("portfolio_max_drawdown"),
+            "capm_alpha_annualized": metrics.get("capm_alpha_annualized"),
+            "capm_beta": metrics.get("capm_beta"),
+            "post_trade_audit_count": metrics.get("post_trade_audit_count"),
+            "maximum_post_trade_active_beta_deviation": metrics.get(
+                "maximum_post_trade_active_beta_deviation"
+            ),
+            "maximum_post_trade_industry_active_exposure": metrics.get(
+                "maximum_post_trade_industry_active_exposure"
+            ),
+            "post_trade_policy_violation_fraction": metrics.get(
+                "post_trade_policy_violation_fraction"
+            ),
+            "beta_audit_complete_fraction": metrics.get(
+                "beta_audit_complete_fraction"
+            ),
             "average_turnover": metrics.get("average_turnover"),
             "execution_cost_bps": execution.get("cost_bps_of_executed_notional"),
             "notional_fill_ratio": execution.get("notional_fill_ratio"),
@@ -545,7 +595,6 @@ def _recalculate_metrics(daily: pd.DataFrame, trades: pd.DataFrame) -> dict[str,
         "trade_date",
         "nav",
         "benchmark_nav",
-        "active_return",
         "turnover",
     }
     required_trades = {
@@ -560,45 +609,10 @@ def _recalculate_metrics(daily: pd.DataFrame, trades: pd.DataFrame) -> dict[str,
         raise ConfigurationError(
             f"Final metric inputs lack columns: daily={missing_daily}, trades={missing_trades}"
         )
-    observations = max(len(daily) - 1, 1)
-    years = observations / 252.0
-    final_nav = float(daily["nav"].iloc[-1])
-    final_benchmark = float(daily["benchmark_nav"].iloc[-1])
-    active = pd.to_numeric(daily["active_return"], errors="raise").astype(float)
-    tracking_error = (
-        float(active.std(ddof=1) * np.sqrt(252)) if len(active) > 1 else 0.0
+    return calculate_backtest_metrics(
+        enrich_active_performance(daily),
+        trades,
     )
-    annual_active = float(active.mean() * 252)
-    drawdown = daily["nav"] / daily["nav"].cummax() - 1.0
-    costs = float(
-        trades["linear_cost"].sum()
-        + trades["stamp_duty"].sum()
-        + trades["impact_cost"].sum()
-    )
-    return {
-        "start_date": str(daily["trade_date"].iloc[0]),
-        "end_date": str(daily["trade_date"].iloc[-1]),
-        "observations": int(len(daily)),
-        "final_nav": final_nav,
-        "final_benchmark_nav": final_benchmark,
-        "total_return": final_nav / float(daily["nav"].iloc[0]) - 1.0,
-        "benchmark_total_return": final_benchmark - 1.0,
-        "annualized_return": final_nav ** (1.0 / years) - 1.0,
-        "annualized_active_return": annual_active,
-        "tracking_error": tracking_error,
-        "information_ratio": (
-            annual_active / tracking_error if tracking_error > 0 else math.nan
-        ),
-        "max_drawdown": float(drawdown.min()),
-        "average_turnover": float(daily["turnover"].fillna(0.0).mean()),
-        "transaction_cost": costs,
-        "filled_orders": int((trades["status"] == "filled").sum()),
-        "partial_orders": int((trades["status"] == "partial").sum()),
-        "executed_orders": int(
-            trades["status"].isin(["filled", "partial"]).sum()
-        ),
-        "blocked_orders": int((trades["status"] == "blocked").sum()),
-    }
 
 
 def _metric_differences(

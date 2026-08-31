@@ -1,0 +1,227 @@
+study:
+  id: a2-factor-expansion-v1
+  base_config: ../extended_validation_2023_2025.yaml
+  max_trials: 2
+
+selection:
+  primary_tolerance: 0.10
+  gates:
+    - path: quality_passed
+      operator: "=="
+      value: true
+    - path: optimizer_solve_rate
+      operator: ">="
+      value: 0.95
+    - path: evaluation.yearly.positive_active_year_fraction
+      operator: ">="
+      value: 0.66
+    - path: evaluation.yearly.worst_active_max_drawdown
+      operator: ">="
+      value: -0.06
+    - path: evaluation.model_weights.maximum_single_factor_weight
+      operator: "<="
+      value: 0.200001
+    - path: evaluation.model_weights.maximum_family_weight
+      operator: "<="
+      value: 0.350001
+  primary:
+    path: evaluation.yearly.median_information_ratio
+    direction: maximize
+  tie_breakers:
+    - path: metrics.information_ratio
+      direction: maximize
+    - path: evaluation.yearly.minimum_information_ratio
+      direction: maximize
+    - path: metrics.active_max_drawdown
+      direction: maximize
+    - path: metrics.average_turnover
+      direction: minimize
+
+trials:
+  - id: a0_frozen_pool
+    purpose: Reproduce the frozen 42-factor A0 candidate pool under the A2 provider.
+    overrides:
+      workflow:
+        factors:
+          - reversal_1d
+          - reversal_5d
+          - reversal_10d
+          - reversal_20d
+          - momentum_20_5
+          - momentum_60_20
+          - momentum_120_20
+          - momentum_250_20
+          - low_vol_20
+          - low_downside_vol_60
+          - low_range_vol_20
+          - beta_60
+          - low_idio_vol_60
+          - skewness_60
+          - max_return_20
+          - amihud_20
+          - free_turnover_20
+          - turnover_shock_5_60
+          - zero_return_20
+          - close_location_20
+          - size
+          - total_size
+          - free_float_ratio
+          - book_to_price
+          - abnormal_turnover_reversal
+          - gross_profitability_ttm
+          - roe_ttm
+          - roa_ttm
+          - operating_margin_ttm
+          - cash_return_on_assets_ttm
+          - book_to_market
+          - earnings_yield_ttm
+          - sales_to_price_ttm
+          - cfo_yield_ttm
+          - revenue_growth_ttm_yoy
+          - earnings_growth_ttm_yoy
+          - cfo_growth_ttm_yoy
+          - roe_change_yoy
+          - asset_growth_yoy
+          - capex_intensity_ttm
+          - total_accruals_ttm
+          - cash_conversion_ttm
+          - market_residual_momentum_120_20
+          - turnover_volatility_20
+          - high_turnover_return_20
+          - intraday_strength_20
+          - limit_up_close_rate_20
+          - failed_limit_up_rate_20
+        feature_provider:
+          name: builtin_a2_daily_fundamental
+          params:
+            max_financial_age_days: 180
+        selector:
+          name: stability_cost
+          params: &a2_selector
+            min_coverage: 0.80
+            min_active_date_rate: 0.80
+            min_cross_section: 100
+            min_ic_dates: 100
+            min_mean_directed_ic: 0.0
+            min_direction_consistency: 0.50
+            segments: 4
+            min_segment_selection_frequency: 0.50
+            min_mean_net_quintile_spread: 0.0
+            min_net_spread_consistency: 0.50
+            min_joint_segment_frequency: 0.50
+            min_newey_west_t: 0.0
+            max_bh_q_value: 0.20
+            min_quintile_monotonicity: 0.0
+            max_score_churn: 0.35
+            max_abs_correlation: 0.75
+            min_factors: 5
+            max_factors: 10
+            max_per_family: 2
+            max_per_cluster: 1
+            lookback_dates: 156
+            churn_penalty: 0.05
+            linear_cost_bps: 5.0
+            stamp_duty_change_date: "20230828"
+            stamp_duty_before: 0.001
+            stamp_duty_after: 0.0005
+            excluded_factors:
+              - market_residual_momentum_120_20
+              - turnover_volatility_20
+              - high_turnover_return_20
+              - intraday_strength_20
+              - limit_up_close_rate_20
+              - failed_limit_up_rate_20
+        model:
+          name: family_direction_equal
+          params: &a2_model
+            min_cross_section: 100
+            min_training_rows: 1000
+            min_training_dates: 100
+            min_ic_dates: 100
+            lookback_dates: 156
+            ridge_alpha: 10.0
+            min_factor_fraction: 0.50
+            min_family_fraction: 0.50
+            min_active_factors: 5
+            min_active_families: 3
+            max_factor_weight: 0.20
+            max_family_weight: 0.35
+        calibrator:
+          name: rolling_ridge
+          params: &a2_calibrator
+            alpha: 10.0
+            min_training_rows: 1000
+            min_training_dates: 12
+            score_clip: 3.0
+            label_clip: 0.20
+            max_abs_slope: 0.05
+            max_abs_expected_return: 0.10
+
+  - id: a2_discovery_pool
+    purpose: Add only the six A-share candidates accepted on the 2017-2019 discovery sample.
+    overrides:
+      workflow:
+        factors:
+          - reversal_1d
+          - reversal_5d
+          - reversal_10d
+          - reversal_20d
+          - momentum_20_5
+          - momentum_60_20
+          - momentum_120_20
+          - momentum_250_20
+          - low_vol_20
+          - low_downside_vol_60
+          - low_range_vol_20
+          - beta_60
+          - low_idio_vol_60
+          - skewness_60
+          - max_return_20
+          - amihud_20
+          - free_turnover_20
+          - turnover_shock_5_60
+          - zero_return_20
+          - close_location_20
+          - size
+          - total_size
+          - free_float_ratio
+          - book_to_price
+          - abnormal_turnover_reversal
+          - gross_profitability_ttm
+          - roe_ttm
+          - roa_ttm
+          - operating_margin_ttm
+          - cash_return_on_assets_ttm
+          - book_to_market
+          - earnings_yield_ttm
+          - sales_to_price_ttm
+          - cfo_yield_ttm
+          - revenue_growth_ttm_yoy
+          - earnings_growth_ttm_yoy
+          - cfo_growth_ttm_yoy
+          - roe_change_yoy
+          - asset_growth_yoy
+          - capex_intensity_ttm
+          - total_accruals_ttm
+          - cash_conversion_ttm
+          - market_residual_momentum_120_20
+          - turnover_volatility_20
+          - high_turnover_return_20
+          - intraday_strength_20
+          - limit_up_close_rate_20
+          - failed_limit_up_rate_20
+        feature_provider:
+          name: builtin_a2_daily_fundamental
+          params:
+            max_financial_age_days: 180
+        selector:
+          name: stability_cost
+          params:
+            <<: *a2_selector
+            excluded_factors: []
+        model:
+          name: family_direction_equal
+          params: *a2_model
+        calibrator:
+          name: rolling_ridge
+          params: *a2_calibrator
