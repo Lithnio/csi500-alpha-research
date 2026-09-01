@@ -33,10 +33,10 @@
     }
   },
   "outputs": {
-    "v2-backtest-overview.png": "552adc15bd53c9815b9a09ef3af5b9942a40ef14a0004fd92522b4ab3761b3ef",
-    "v2-factor-audit.png": "02579589c93bdb888d66cd7a6ed2c0c26131fe42fd304fd47a2e94b5f1707b17",
-    "v2-freeze-rationale.png": "ed2be9881e83973863d4bba96e01701e623ba57673ccc0dd884b535aa1133c69",
-    "v2-public-summary.json": "126d69116291c85cf0b82d30af96566e8da53cbb14d3c97b310f7fb0fb89086f"
+    "v2-backtest-overview.png": "f5273412137e03bc85cdf20808873aba6ae8425acdbc3e8ff651560a0a45ab5e",
+    "v2-factor-audit.png": "f0c527fd37d2faf16ae19692bee0299aa91ee377daa46fbe7901517378ef15c5",
+    "v2-freeze-rationale.png": "482007abef0d259108b588a1bbe4fcfb5102b774cfcad0307ea3e234e51a3d47",
+    "v2-public-summary.json": "faeedb4531a7ff8494938d52e74d21d5a7c4a02eff34900578eca89210b5c37a"
   },
   "public_boundary": "仅包含聚合指标和栅格图片；不包含持仓、成交、逐行信号、供应商原始数据、凭证或本地路径。",
   "schema_version": 3,

@@ -1,41 +1,41 @@
-# 中证 500 时点一致多因子主动组合研究
+# 中证 500 指数增强：时点一致多因子主动组合研究
 
 [![CI](https://github.com/Lithnio/csi500-alpha-research/actions/workflows/ci.yml/badge.svg)](https://github.com/Lithnio/csi500-alpha-research/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-2.1.0-244A64)
+![Version](https://img.shields.io/badge/version-2.2.0-244A64)
 ![Python](https://img.shields.io/badge/Python-3.12-244A64)
 ![License](https://img.shields.io/badge/License-MIT-7D705F)
 
-这是一个面向 A 股主动量化研究的完整实现：从 Tushare Pro 原始数据出发，构建历史中证 500 成分和时点一致因子，完成因子检验、信号合成、收益校准、风险估计、组合优化、次日开盘执行及结果审计。
+这是一个中证 500 指数增强研究的完整实现：从 Tushare Pro 原始数据出发，构建历史成分和时点一致因子，完成因子检验、信号合成、收益校准、风险估计、组合优化、次日开盘执行及结果审计。
 
-v2.1 没有更换策略或重新选择回测结果，主要补齐了从单因子到合成信号、再到可交易组合的证据链，并重新整理公开报告。
+v2.2 沿用既定策略与回测结果，进一步统一研究口径、参数说明和复现入口。发布结论受预先登记门槛约束；未通过指标、未采用方案和已经揭示的负样本外结果均随版本保留。
 
 ## 核心研究证据
 
 | 层级 | 样本与口径 | 排序或收益质量 | 风险与稳定性 |
 |---|---|---|---|
-| 单因子 | 2017—2025 全样本审计；42 个候选中 14 个入选 | 定向 Rank IC 中位数 0.0209；费后 Q5−Q1 Sharpe 中位数 0.631 | 费后多空最大回撤中位数 -18.63% |
-| 合成信号 | 2020—2025 滚动年度折；236 个有效决策日 | 日均 Rank IC 0.0345；Q5−Q1 平均 9.87 个基点，年化 Sharpe 0.498 | 分组收益最大回撤 -9.82%；该层未扣交易成本 |
-| 主动组合 | 2020—2025 六个互不重叠年度折；已扣模型化成本 | 年化主动收益 1.64%；信息比率 0.388；5/6 年为正 | 主动最大回撤 -6.64%；组合绝对 Sharpe 0.601 |
+| 单因子 | 2017—2025 全样本审计；42 个候选中 14 个合格 | 定向 Rank IC 中位数 0.0209；费后 Q5−Q1 Sharpe 中位数 0.631 | 费后多空最大回撤中位数 −18.63% |
+| 合成信号 | 2020—2025 滚动年度折；236 个有效决策日 | 日均 Rank IC 0.0345；Q5−Q1 每 5 个交易日平均 9.87 个基点，年化 Sharpe 0.498 | 分组收益最大回撤 −9.82%；该层未扣交易成本 |
+| 主动组合 | 2020—2025 六个互不重叠年度折；已扣模型化成本 | 年化主动收益 1.64%；信息比率 0.388；5/6 年为正 | 主动最大回撤 −6.64%；组合绝对 Sharpe 0.601 |
 
 单因子指标用于描述因子池质量，不是样本外业绩；合成信号的分组收益为费前诊断；只有组合层计入完整执行和交易成本。三类指标不能直接横向比较。
 
-![入选因子的 Rank IC 与费后分组收益](docs/assets/v2-factor-audit.png)
+![审计合格因子的 Rank IC 与费后分组收益](docs/assets/v2-factor-audit.png)
 
-14 个入选因子覆盖估值、风险、流动性、质量、成长、动量和应计七类暴露。单因子 Rank IC 与费后分组 Sharpe 并非严格单调：低波动类因子排序能力较强，但部分因子的分组收益质量较弱；现金流、盈利收益率和长期动量的 Rank IC 不居前，费后 Sharpe 反而较高。因此组合阶段保留家族分散和成本门槛，不按单一 IC 排名集中配权。
+14 个审计合格因子覆盖估值、风险、流动性、质量、成长、动量和应计七类暴露。单因子 Rank IC 与费后分组 Sharpe 并非严格单调：低波动类因子排序能力较强，但部分因子的分组收益质量较弱；现金流、盈利收益率和长期动量的 Rank IC 不居前，费后 Sharpe 反而较高。因此组合阶段保留家族分散和成本门槛，不按单一 IC 排名集中配权。
 
 ## 滚动组合结果
 
 | 指标 | 结果 |
 |---|---:|
-| 评价区间 | 2020-01-08—2025-12-31 |
+| 评价区间 | 2020-01-08 至 2025-12-31 |
 | 组合 / 基准累计收益 | 81.34% / 65.22% |
 | 累计相对收益 | 9.76% |
 | 年化主动收益 / 信息比率 | 1.64% / 0.388 |
 | 组合 / 基准绝对 Sharpe（无风险利率取 0） | 0.601 / 0.516 |
-| 组合 / 基准最大回撤 | -35.67% / -35.91% |
-| 跟踪误差 / 主动最大回撤 | 4.45% / -6.64% |
+| 组合 / 基准最大回撤 | −35.67% / −35.91% |
+| 跟踪误差 / 主动最大回撤 | 4.45% / −6.64% |
 | CAPM 年化 α / β | 2.02% / 0.956 |
-| 正主动收益年度 / 最差年度 | 5/6 / -0.34% |
+| 正主动收益年度 / 最差年度累计主动收益 | 5/6 / −0.34% |
 | 平均单期换手 / 执行成本 | 2.22% / 11.05 个基点 |
 | 成交金额完成率 / 优化求解率 | 99.74% / 98.96% |
 
@@ -47,12 +47,14 @@ v2.1 没有更换策略或重新选择回测结果，主要补齐了从单因子
 | 2021 | 2.64% |
 | 2022 | 3.14% |
 | 2023 | 0.16% |
-| 2024 | -0.36% |
+| 2024 | −0.36% |
 | 2025 | 2.62% |
 
 2023 年折内没有因子通过筛选，模型输出零主动预测；该年的小幅主动收益来自基准跟踪和模拟执行偏差，不能归因于选股信号。
 
-预先登记的 12 项发布门槛通过 8 项。未通过的四项为：年化主动收益 1.64%（门槛 3.00%）、信息比率 0.388（门槛 0.800）、主动最大回撤 -6.64%（门槛 -6.00%）和滚动 β 偏离 95% 分位数 0.163（门槛 0.100）。这些结果随版本公开保留，没有事后调整门槛。
+2024 年累计主动收益为 −0.34%，按该年度样本长度年化后为 −0.36%；两处数字来自同一收益序列。现有聚合证据不足以把该结果可靠归因于某个因子或执行环节，因此只将其保留为年度稳定性的反例。
+
+预先登记的 12 项发布门槛通过 8 项。未通过的四项为：年化主动收益 1.64%（门槛 3.00%）、信息比率 0.388（门槛 0.800）、主动最大回撤 −6.64%（门槛 −6.00%）和滚动 β 偏离 95% 分位数 0.163（门槛 0.100）。这些结果随版本公开保留，没有事后调整门槛。
 
 脱敏汇总见 [v2-public-summary.json](docs/assets/v2-public-summary.json)，来源与图片指纹见 [v2-report-manifest.json](docs/assets/v2-report-manifest.json)。
 
@@ -63,7 +65,7 @@ Tushare 数据与请求缓存
   → 历史成分、复权行情、行业、交易状态和财务可得时点
   → 截面因子处理与折内筛选
   → 因子家族合成与滚动收益校准
-  → 协方差、Beta 和主动风险估计
+  → 协方差、β 和主动风险估计
   → 约束组合优化
   → 下一交易日开盘执行、成本与容量模拟
   → 年度滚动评价、完整性审计和聚合报告
@@ -91,6 +93,8 @@ s_{i,t}=\sum_g \omega_g F_{g,i,t}.
 
 单因子权重不高于 20%，单一因子家族不高于 35%。滚动岭回归将合成分数映射为未来 5 个交易日的预期主动收益。
 
+两项备选方法没有进入发布方案：扩展因子池提高了全期汇总收益，但削弱年度稳定性；残差信号袖套在逐年折外证据不足时自动回退为零权重。否决依据见 [TECHNICAL.md 的未采用方案](TECHNICAL.md#74-未采用方案)。
+
 组合相对当期中证 500 权重求解收益、风险、交易成本和主动偏离之间的平衡：
 
 ```math
@@ -117,9 +121,20 @@ s_{i,t}=\sum_g \omega_g F_{g,i,t}.
 | 执行 | 次日开盘、先卖后买、不可交易方向、部分成交、印花税、线性成本和冲击成本 |
 | 工程 | 配置驱动实验、年度折并行、断点恢复、数据与源码指纹、聚合报告和离线测试 |
 
+## 代码导航
+
+| 研究环节 | 主要实现 |
+|---|---|
+| 因子与时点处理 | [价量因子与截面处理](src/csi500_alpha/features/builder.py)、[因子目录](src/csi500_alpha/features/catalog.py)、[基本面因子](src/csi500_alpha/features/fundamental.py) |
+| 筛选、合成与校准 | [折内筛选](src/csi500_alpha/workflow/selection.py)、[家族合成](src/csi500_alpha/workflow/family_models.py)、[滚动收益校准](src/csi500_alpha/workflow/calibration.py) |
+| 风险、优化与执行 | [风险模型](src/csi500_alpha/risk/model.py)、[主动组合优化器](src/csi500_alpha/portfolio/optimizer.py)、[事件回测与执行](src/csi500_alpha/execution/backtest.py) |
+| 年度验证与报告 | [年度折调度和审计](src/csi500_alpha/annual.py)、[v2 聚合证据生成](src/csi500_alpha/v2_reporting.py) |
+
 ## 复现
 
-要求 Python 3.12。Tushare Token 只写入被 Git 忽略的 `.env`。
+要求 Python 3.12。Tushare Token 只写入被 Git 忽略的 `.env`。当前 2016—2025 数据快照约占 2.1 GiB，一次完整发布研究的年度制品约占 4.3 GiB，建议至少预留 10 GiB 空间。最近一次 12 任务完整复算的清单记录约 4 小时墙钟时间；实际下载量和耗时会随缓存、处理器及并行数变化。本次研究使用具备 2000 积分权限的 Tushare Pro 账户，具体接口权限仍以运行时探测结果为准。
+
+以下封装脚本面向 Windows PowerShell；核心 Python 命令本身不依赖 Windows。
 
 ```powershell
 uv sync --extra dev --extra report
@@ -136,6 +151,16 @@ uv run python -m csi500_alpha doctor --config configs/full.yaml
 uv run pytest
 uv run ruff check .
 uv run mypy src
+```
+
+Linux 和 macOS 可直接调用同一组命令行入口，例如：
+
+```bash
+uv run python -m csi500_alpha download-data --config configs/full.yaml
+uv run python -m csi500_alpha download-eligibility --config configs/full.yaml
+uv run python -m csi500_alpha download-financial --spec configs/financial_core.yaml
+uv run python -m csi500_alpha run-factor-audit --spec configs/factor_audit_v2.yaml
+uv run python -m csi500_alpha run-annual-study --annual configs/annual/a32_turnover_budgeted_residual_v1_canonical.yaml --workers 4
 ```
 
 市场数据和逐行研究制品不随仓库分发。使用者需要凭自己的 Tushare 权限构建数据后复算；仓库中的 JSON 和 PNG 只保留不可逆聚合证据。

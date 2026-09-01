@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "csi500-alpha"
-version = "2.1.0"
+version = "2.2.0"
 description = "Point-in-time CSI 500 factor research and cost-aware active portfolio construction."
 readme = "TECHNICAL.md"
 requires-python = ">=3.12,<3.13"

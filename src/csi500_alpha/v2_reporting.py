@@ -112,7 +112,7 @@ def build_v2_readme_report(
     factor_audit_root: str | Path,
     output_root: str | Path,
 ) -> V2ReadmeReportResult:
-    """Build repository-facing v2.1 figures from fingerprinted aggregate evidence."""
+    """Build repository-facing v2.2 figures from fingerprinted aggregate evidence."""
 
     comparison_baseline = _load_annual_evidence(
         Path(baseline_root).resolve(),
@@ -672,7 +672,7 @@ def _public_summary(
     return {
         "schema_version": 3,
         "release": {
-            "version": "2.1.0",
+            "version": "2.2.0",
             "status": "research_release",
             "publication_gate_assessment": _publication_gate_summary(selection),
         },
@@ -1559,7 +1559,7 @@ def _save_figure(figure: Any, path: Path, pyplot: Any) -> None:
             temporary,
             dpi=180,
             bbox_inches="tight",
-            metadata={"Software": "csi500-alpha v2.1 research report"},
+            metadata={"Software": "csi500-alpha v2.2 research report"},
         )
         os.replace(temporary, path)
     finally:

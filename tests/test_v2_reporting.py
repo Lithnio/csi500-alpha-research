@@ -31,7 +31,7 @@ def test_v2_readme_report_exports_fingerprinted_aggregate_evidence(tmp_path: Pat
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
     assert summary["scope"]["evaluation_role"] == "rolling_annual_research"
     assert summary["released_method"]["positive_active_years"] == 2
-    assert summary["release"]["version"] == "2.1.0"
+    assert summary["release"]["version"] == "2.2.0"
     assert summary["release"]["status"] == "research_release"
     gate_assessment = summary["release"]["publication_gate_assessment"]
     assert gate_assessment["passed"] is False
@@ -110,7 +110,11 @@ def test_v2_readme_report_rejects_tampered_diagnostic_evidence(
 def test_repository_readme_matches_published_v2_evidence() -> None:
     repository = Path(__file__).resolve().parents[1]
     assets = repository / "docs" / "assets"
-    readme = (repository / "README.md").read_text(encoding="utf-8")
+    readme = (
+        (repository / "README.md")
+        .read_text(encoding="utf-8")
+        .replace("−", "-")
+    )
     summary_text = (assets / "v2-public-summary.json").read_text(encoding="utf-8")
     manifest_text = (assets / "v2-report-manifest.json").read_text(encoding="utf-8")
     summary = json.loads(summary_text)
